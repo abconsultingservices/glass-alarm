@@ -2,27 +2,21 @@ import { useEffect } from 'react';
 import { View, ActivityIndicator } from 'react-native';
 import { useRouter } from 'expo-router';
 import { db } from '../db/client';
+import { dbService } from '../services/DatabaseService';
 
 export default function Index() {
   const router = useRouter();
 
   useEffect(() => {
     async function checkUser() {
-      try {
-        console.log("Waiting for DB and checking users...");
-        
-        // On Web, the first query might fail if the WASM worker isn't hot.
-        // We wrap it in a retry or a small delay if needed.
-        const allUsers = await db.query.users.findMany();
-        
-        if (allUsers && allUsers.length > 0) {
-          router.replace('/dashboard');
-        } else {
-          router.replace('/setup');
-        }
-      } catch (e) {
-        console.error("Drizzle Query Error:", e);
-        // If the table doesn't exist yet (first run), we must go to setup
+      // Small delay to ensure the Web Worker has initialized
+      await new Promise(resolve => setTimeout(resolve, 100));
+      
+      const exists = await dbService.hasUsers();
+      
+      if (exists) {
+        router.replace('/dashboard');
+      } else {
         router.replace('/setup');
       }
     }

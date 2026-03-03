@@ -1,0 +1,3 @@
+const root = await navigator.storage.getDirectory();
+await root.remove({ recursive: true });
+console.log("OPFS cleared. Refresh the page.");
