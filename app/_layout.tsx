@@ -40,6 +40,21 @@ export default function RootLayout() {
           transition: background-color 5000s ease-in-out 0s !important;
           background-color: transparent !important;
         }
+
+        /* Add this inside your style.innerHTML block */
+        [data-glass-input="true"]::placeholder {
+          color: ${colors.placeholderText} !important;
+          opacity: 1 !important; /* Forces the browser to use our exact opacity from getColors */
+          font-weight: 500 !important;     /* Matches the light iOS placeholder weight */
+           -webkit-text-fill-color: ${colors.placeholderText}  !important;
+        }
+
+       
+        /* Chrome/Safari specific pseudo-element */
+        [data-glass-input="true"]::-webkit-input-placeholder {
+          color: ${colors.placeholderText}  !important;
+          font-weight: 500 !important;     /* Matches the light iOS placeholder weight */
+        }
       `;
       document.head.appendChild(style);
       
