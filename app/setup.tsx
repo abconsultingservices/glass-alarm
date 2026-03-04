@@ -13,23 +13,24 @@ export default function Setup() {
     const [form, setForm] = useState({ name: '', email: '', phone: '' });
     const [fieldErrors, setFieldErrors] = useState({ name: '', email: '', phone: '' });
 
+    // Subtext for guidance (not errors)
+    const fieldSubtext = {
+        name: '',
+        email: '',
+        phone: 'Include + and country code for international.'
+    };
+
     const validateField = (field: string, value: string) => {
         if (value.length === 0) return ''; 
-
         if (field === 'email') {
             const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
             return emailRegex.test(value) ? '' : 'Invalid email address';
         }
-
         if (field === 'phone') {
-            // Allows: +, 0-9, hyphens, comma, semicolon, *, #
             const phoneRegex = /^[+0-9\-\,\;\*\#\s]+$/;
             return phoneRegex.test(value) ? '' : 'Invalid phone format';
         }
-
-        if (field === 'name' && value.length < 2) {
-            return 'Name is too short';
-        }
+        if (field === 'name' && value.length < 2) return 'Name is too short';
         return '';
     };
 
@@ -41,13 +42,10 @@ export default function Setup() {
 
     const save = async () => {
         if (!form.name || !form.email || Object.values(fieldErrors).some(e => e !== '')) return;
-
         try {
             await dbService.createUser(form.name, form.email, form.phone);
             router.replace('/dashboard');
-        } catch (e) {
-            console.error(e);
-        }
+        } catch (e) { console.error(e); }
     };
 
     const fieldConfig = {
@@ -64,27 +62,36 @@ export default function Setup() {
                 <Text style={[styles.title, { marginBottom: 30 }]}>Setup Profile</Text>
 
                 {/* --- STYLE A: INDIVIDUAL PILLS --- */}
-                <Text style={{ color: colors.mutedText, marginBottom: 10, fontSize: 12, fontWeight: '600', letterSpacing: 1 }}>INDIVIDUAL PILLS</Text>
+                <Text style={styles.fieldGroupTitle}>INDIVIDUAL PILLS</Text>
                 {fieldKeys.map((field) => {
                     const hasError = !!fieldErrors[field];
+                    const hasSubtext = !!fieldSubtext[field];
                     return (
-                        <View key={`pill-${field}`} style={[styles.inputContainer, hasError && { borderColor: colors.error }]}>
-                            <TextInput 
-                                placeholder={field.charAt(0).toUpperCase() + field.slice(1)}
-                                placeholderTextColor={colors.placeholderText}
-                                style={styles.inputField} 
-                                value={form[field]}
-                                onChangeText={t => handleTextChange(field, t)} 
-                                {...fieldConfig[field]}
-                                dataSet={{ 'glass-input': 'true' }}
-                            />
+                        <View key={`pill-wrap-${field}`} style={{ marginBottom: 16 }}>
+                            <View style={[styles.inputContainer, hasError && { borderColor: colors.error }, { marginBottom: 0 }]}>
+                                <TextInput 
+                                    placeholder={field.charAt(0).toUpperCase() + field.slice(1)}
+                                    placeholderTextColor={colors.placeholderText}
+                                    style={styles.inputField} 
+                                    value={form[field]}
+                                    onChangeText={t => handleTextChange(field, t)} 
+                                    {...fieldConfig[field]}
+                                    dataSet={{ 'glass-input': 'true' }}
+                                />
+                                {hasError ? (
+                                    <View style={styles.warningIcon}><Text style={{ fontSize: 18 }}>⚠️</Text></View>
+                                ) : form[field].length > 0 && (
+                                    <Pressable onPress={() => handleTextChange(field, '')} style={styles.clearIcon}>
+                                        <Text style={{ color: colors.mutedText, fontSize: 18 }}>✕</Text>
+                                    </Pressable>
+                                )}
+                            </View>
+                            {/* Priority: Show Error (Red) first, then Fallback to Subtext (Muted) */}
                             {hasError ? (
-                                <Text style={{ marginRight: 10, fontSize: 18 }}>⚠️</Text>
-                            ) : form[field].length > 0 && (
-                                <Pressable onPress={() => handleTextChange(field, '')} style={styles.clearIcon}>
-                                    <Text style={{ color: colors.mutedText, fontSize: 18 }}>✕</Text>
-                                </Pressable>
-                            )}
+                                <Text style={[styles.errorSubtext, { marginLeft: 16, marginTop: 4 }]}>{fieldErrors[field]}</Text>
+                            ) : hasSubtext ? (
+                                <Text style={[styles.errorSubtext, { color: colors.mutedText, marginLeft: 16, marginTop: 4 }]}>{fieldSubtext[field]}</Text>
+                            ) : null}
                         </View>
                     );
                 })}
@@ -92,11 +99,12 @@ export default function Setup() {
                 <View style={{ height: 40 }} />
 
                 {/* --- STYLE B: INSET GROUP --- */}
-                <Text style={{ color: colors.mutedText, marginBottom: 10, fontSize: 12, fontWeight: '600', letterSpacing: 1 }}>INSET GROUP</Text>
+                <Text style={styles.fieldGroupTitle}>INSET GROUP</Text>
                 <View style={styles.insetGroup}>
                     {fieldKeys.map((field, index) => {
                         const isLast = index === fieldKeys.length - 1;
                         const hasError = !!fieldErrors[field];
+                        const hasSubtext = !!fieldSubtext[field];
 
                         return (
                             <React.Fragment key={`inset-${field}`}>
@@ -111,14 +119,14 @@ export default function Setup() {
                                             {...fieldConfig[field]}
                                             dataSet={{ 'glass-input': 'true' }}
                                         />
-                                        {hasError && (
+                                        {hasError ? (
                                             <Text style={styles.errorSubtext}>{fieldErrors[field]}</Text>
-                                        )}
+                                        ) : hasSubtext ? (
+                                            <Text style={[styles.errorSubtext, { color: colors.mutedText }]}>{fieldSubtext[field]}</Text>
+                                        ) : null}
                                     </View>
                                     {hasError ? (
-                                        <View style={styles.warningIcon}>
-                                            <Text style={{ fontSize: 20 }}>⚠️</Text>
-                                        </View>
+                                        <View style={styles.warningIcon}><Text style={{ fontSize: 20 }}>⚠️</Text></View>
                                     ) : form[field].length > 0 && (
                                         <Pressable onPress={() => handleTextChange(field, '')} style={styles.clearIcon}>
                                             <Text style={{ color: colors.mutedText, fontSize: 18 }}>✕</Text>
@@ -130,6 +138,10 @@ export default function Setup() {
                         );
                     })}
                 </View>
+                <Text style={styles.groupFootnote}>
+                    iPhone can securely monitor your profile data and alert you to 
+                    syncing issues. <Text style={{ color: colors.primary }}>About Privacy...</Text>
+                </Text>
             </ScrollView>
 
             <Pressable 
