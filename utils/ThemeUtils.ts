@@ -115,7 +115,31 @@ export class ThemeUtils {
                 paddingRight: 15,
                 justifyContent: 'center',
             },
-            // THE FIGMA-STYLE PRIMARY BUTTON
+            setupContainer: {
+                flex: 1,
+                backgroundColor: colors.background, // Should be your dark/glass base
+            },
+            floatingButtonContainer: {
+                position: 'absolute',
+                left: 20,
+                right: 20,
+                zIndex: 10,
+                // We leave bottom and transform out so they can be dynamic
+            },
+            setupTitle: {
+                fontSize: 34, // iOS Large Title size
+                fontWeight: '700',
+                color: colors.text,
+                letterSpacing: 0.41,
+                paddingHorizontal: 20,
+                marginBottom: 20,
+            },
+            floatingButtonContainer: {
+                position: 'absolute',
+                left: 20,
+                right: 20,
+                zIndex: 10, // Ensures it stays above the scroll content
+            },
             button: { 
                 fontFamily: systemFont,
                 backgroundColor: colors.primary,

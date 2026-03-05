@@ -58,7 +58,7 @@ export const GlassFormRenderer = ({ schema, form, setForm, errors, setErrors }: 
     };
 
     return (
-        <ScrollView showsVerticalScrollIndicator={false}>
+        <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={{ paddingBottom: 120 }}>
             {schema.map((section, sIdx) => (
                 <View key={`section-${sIdx}`} style={{ marginBottom: 32 }}>
                     {section.label && (
