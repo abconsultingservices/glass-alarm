@@ -52,7 +52,6 @@ export class ThemeUtils {
             web: '-apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif',
             default: 'System',
         });
-        console.log(systemFont);
         return StyleSheet.create({
             container: {
                 fontFamily: systemFont,
@@ -163,7 +162,7 @@ export class ThemeUtils {
                 overflow: 'hidden',
                 borderWidth: 1,
                 borderColor: colors.glassBorder,
-                marginBottom: 30,
+                marginBottom: 0,
                 ...Platform.select({
                     ios: {
                         borderRadius: 20
@@ -206,7 +205,7 @@ export class ThemeUtils {
             },
             errorSubtext: {
                 fontFamily: systemFont,
-                fontSize: 12, // Standard iOS footnote size
+                fontSize: 13,
                 color: colors.error,
                 marginTop: 2,
                 fontWeight: '400',
@@ -222,6 +221,14 @@ export class ThemeUtils {
                 fontFamily: systemFont,
                 color: colors.error, 
                 fontSize: 16 
+            },
+            groupFootnote: {
+                fontFamily: systemFont,
+                fontSize: 13, // Standard iOS footnote size
+                color: colors.mutedText,
+                marginTop: 8,
+                paddingHorizontal: 16, // Aligns with the group's internal text start
+                lineHeight: 18,
             }
         });
     }

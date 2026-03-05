@@ -29,9 +29,31 @@ interface Props {
 export const GlassFormRenderer = ({ schema, form, setForm, errors, setErrors }: Props) => {
     const { styles, colors, getPressedStyle } = useThemedStyles();
 
-    const handleUpdate = (key: string, val: string, rules: ValidationRule[] = []) => {
-        setForm((prev: any) => ({ ...prev, [key]: val }));
-        const errorMsg = validateValue(val, rules);
+    const handleUpdate = (key: string, val: string, rules: ValidationRule[] = [], overrideFilter?: RegExp) => {
+        let filteredVal = val;
+
+        // 1. Check for Schema Override first
+        if (overrideFilter) {
+            filteredVal = val.replace(overrideFilter, '');
+        } 
+        // 2. Fall back to "Smart Defaults" based on the key name
+        else {
+            if (key === 'email') {
+                filteredVal = val.replace(/[^a-zA-Z0-9@._%+-]/g, '');
+            } 
+            else if (key === 'phone') {
+                filteredVal = val.replace(/[^0-9+\-\(\)\s,;*#]/g, '');
+            }
+            else if (key === 'name') {
+                // Defaults to allowing alpha, spaces, and common name punctuation
+                filteredVal = val.replace(/[^a-zA-Z\s\-']/g, '');
+            }
+            // Add more defaults here as your app grows
+        }
+
+        setForm((prev: any) => ({ ...prev, [key]: filteredVal }));
+        
+        const errorMsg = validateValue(filteredVal, rules);
         setErrors((prev: any) => ({ ...prev, [key]: errorMsg }));
     };
 
@@ -60,7 +82,7 @@ export const GlassFormRenderer = ({ schema, form, setForm, errors, setErrors }: 
                                             value={form[field.key]}
                                             placeholder={field.label}
                                             placeholderTextColor={colors.placeholderText}
-                                            onChangeText={(t) => handleUpdate(field.key, t, field.validation)}
+                                            onChangeText={(t) => handleUpdate(field.key, t, field.validation, field.overrideFilter)}
                                             {...field.config}
                                             dataSet={{ 'glass-input': 'true' }}
                                         />
