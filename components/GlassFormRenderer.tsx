@@ -1,5 +1,6 @@
 import React from 'react';
 import { View, Text, TextInput, Pressable, ScrollView } from 'react-native';
+import { useRouter } from 'expo-router';
 import { useThemedStyles } from '../hooks/useThemedStyles';
 import { validateValue, ValidationRule } from '../utils/ValidationEngine';
 
@@ -9,6 +10,10 @@ interface Field {
     subtext?: string;
     validation?: ValidationRule[];
     config?: any;
+    overrideFilter?: RegExp;
+    // New Props for Dashboard Parity
+    mode?: 'view' | 'edit'; 
+    destination?: string;
 }
 
 interface Section {
@@ -16,6 +21,7 @@ interface Section {
     label?: string;
     footer?: string;
     fields: Field[];
+    readOnly?: boolean; // Can set entire section to Read Only
 }
 
 interface Props {
@@ -28,11 +34,10 @@ interface Props {
 
 export const GlassFormRenderer = ({ schema, form, setForm, errors, setErrors }: Props) => {
     const { styles, colors, getPressedStyle } = useThemedStyles();
+    const router = useRouter();
 
     const handleUpdate = (key: string, val: string, rules: ValidationRule[] = [], overrideFilter?: RegExp) => {
         let filteredVal = val;
-
-        // 1. Check for Schema Override first
         if (overrideFilter) {
             filteredVal = val.replace(overrideFilter, '');
         } 
@@ -52,7 +57,6 @@ export const GlassFormRenderer = ({ schema, form, setForm, errors, setErrors }: 
         }
 
         setForm((prev: any) => ({ ...prev, [key]: filteredVal }));
-        
         const errorMsg = validateValue(filteredVal, rules);
         setErrors((prev: any) => ({ ...prev, [key]: errorMsg }));
     };
@@ -70,7 +74,37 @@ export const GlassFormRenderer = ({ schema, form, setForm, errors, setErrors }: 
                             const isLast = fIdx === section.fields.length - 1;
                             const hasError = !!errors[field.key];
                             const isPill = section.sectionType === 'pills';
+                            
+                            // Determine if this specific row should be Read-Only
+                            const isReadOnly = section.readOnly || field.mode === 'view';
 
+                            if (isReadOnly) {
+                                return (
+                                    <View key={field.key}>
+                                        <Pressable
+                                            disabled={!field.destination}
+                                            onPress={() => field.destination && router.push(field.destination as any)}
+                                            style={({ pressed }) => [
+                                                { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: 16, minHeight: 48 },
+                                                field.destination && getPressedStyle(pressed)
+                                            ]}
+                                        >
+                                            <Text style={{ fontSize: 17, color: colors.text }}>{field.label}</Text>
+                                            <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+                                                <Text numberOfLines={1} style={{ fontSize: 17, color: colors.mutedText, marginRight: 8 }}>
+                                                    {form[field.key] || 'Not set'}
+                                                </Text>
+                                                {field.destination && (
+                                                    <Text style={{ color: colors.mutedText, fontSize: 18, opacity: 0.5 }}>〉</Text>
+                                                )}
+                                            </View>
+                                        </Pressable>
+                                        {!isLast && section.sectionType === 'insetGroup' && <View style={styles.divider} />}
+                                    </View>
+                                );
+                            }
+
+                            // --- ORIGINAL EDITABLE MARKUP (UNCHANGED) ---
                             const inputMarkup = (
                                 <View style={isPill 
                                     ? [styles.inputContainer, hasError && { borderColor: colors.error }] 

@@ -1,15 +1,11 @@
 import { DarkTheme, DefaultTheme, ThemeProvider } from '@react-navigation/native';
-
 import { Stack } from "expo-router";
 import { useEffect } from "react";
 import { Platform } from "react-native";
-
 import { useThemedStyles } from '../hooks/useThemedStyles';
 
-
-
 export default function RootLayout() {
-  const { isDark, styles, colors } = useThemedStyles(); 
+  const { isDark, colors } = useThemedStyles(); 
 
   useEffect(() => {
     const isWeb = typeof window !== "undefined" && (Platform?.OS === "web" || (Platform as any)?.default?.OS === "web");
@@ -22,7 +18,6 @@ export default function RootLayout() {
         [data-glass-input="true"] input {
           background-color: transparent !important;
           background: transparent !important;
-          /* This overrides the specific shadow seen in your inspector */
           box-shadow: none !important;
           -webkit-box-shadow: 0 0 0px 1000px transparent inset !important;
           outline-width: 0 !important;
@@ -41,24 +36,20 @@ export default function RootLayout() {
           background-color: transparent !important;
         }
 
-        /* Add this inside your style.innerHTML block */
         [data-glass-input="true"]::placeholder {
           color: ${colors.placeholderText} !important;
-          opacity: 1 !important; /* Forces the browser to use our exact opacity from getColors */
-          font-weight: 500 !important;     /* Matches the light iOS placeholder weight */
-           -webkit-text-fill-color: ${colors.placeholderText}  !important;
+          opacity: 1 !important; 
+          font-weight: 500 !important;
+          -webkit-text-fill-color: ${colors.placeholderText} !important;
         }
 
-       
-        /* Chrome/Safari specific pseudo-element */
         [data-glass-input="true"]::-webkit-input-placeholder {
-          color: ${colors.placeholderText}  !important;
-          font-weight: 500 !important;     /* Matches the light iOS placeholder weight */
+          color: ${colors.placeholderText} !important;
+          font-weight: 500 !important;
         }
       `;
       document.head.appendChild(style);
       
-      // Cleanup function to remove style tag if component unmounts
       return () => {
         if (document.head.contains(style)) {
           document.head.removeChild(style);
@@ -73,6 +64,16 @@ export default function RootLayout() {
         <Stack.Screen name="index" />
         <Stack.Screen name="setup" />
         <Stack.Screen name="dashboard" />
+        
+        {/* Dynamic Edit Route Configuration */}
+        <Stack.Screen 
+          name="edit/[field]" 
+          options={{ 
+            presentation: 'card', 
+            gestureEnabled: true,
+            animation: 'slide_from_right' // Native iOS feel
+          }} 
+        />
       </Stack>
     </ThemeProvider>
   );
