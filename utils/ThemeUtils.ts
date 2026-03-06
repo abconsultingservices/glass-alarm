@@ -253,6 +253,32 @@ export class ThemeUtils {
                 marginTop: 8,
                 paddingHorizontal: 16, // Aligns with the group's internal text start
                 lineHeight: 18,
+            },
+            settingsRow: {
+                flexDirection: 'row',
+                alignItems: 'center',
+                justifyContent: 'space-between',
+                paddingHorizontal: 16,
+                minHeight: 48,
+            },
+            settingsLabel: {
+                fontSize: 17,
+                color: colors.text,
+                fontFamily: systemFont,
+            },
+            settingsValueContainer: {
+                flexDirection: 'row',
+                alignItems: 'center',
+                flexShrink: 1,
+            },
+            settingsValue: {
+                fontSize: 17,
+                color: colors.mutedText,
+                marginRight: 8,
+                textAlign: 'right',
+            },
+            chevron: {
+                opacity: 0.3,
             }
         });
     }

@@ -13,9 +13,19 @@
     },
     "scheme": "liquid-glass",
     "ios": {
+      "deploymentTarget": "26.0",
       "userInterfaceStyle": "automatic",
       "supportsTablet": true,
-      "bundleIdentifier": "com.anonymous.liquid-glass-drizzle"
+      "bundleIdentifier": "com.anonymous.liquid-glass-drizzle",
+      "infoPlist": {
+        "NSAlarmKitUsageDescription": "We need access to set your alarms."
+      },
+      "entitlements": {
+        "com.apple.developer.alarm-kit": true,
+        "com.apple.security.application-groups": [
+          "group.com.abessey.liquidglass"
+        ]
+      }
     },
     "android": {
       "userInterfaceStyle": "automatic",
@@ -25,14 +35,24 @@
         "backgroundImage": "./assets/android-icon-background.png",
         "monochromeImage": "./assets/android-icon-monochrome.png"
       },
-      "predictiveBackGestureEnabled": false
+      "predictiveBackGestureEnabled": false,
+      "package": "com.anonymous.liquidglassdrizzle"
     },
     "web": {
       "favicon": "./assets/favicon.png"
     },
     "plugins": [
       "expo-sqlite",
-      "expo-router"
+      "expo-router",
+      [
+        "expo-build-properties",
+        {
+          "ios": {
+            "deploymentTarget": "26.0",
+            "useFrameworks": "static"
+          }
+        }
+      ]
     ]
   }
 }

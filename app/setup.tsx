@@ -1,4 +1,4 @@
-import React, { useState, useRef } from 'react';
+import React, { useState, useRef, useEffect } from 'react';
 import { View, Text, Pressable, Animated } from 'react-native';
 import { useRouter } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -18,7 +18,7 @@ const SETUP_SCHEMA: Section[] = [
                 label: 'Name', 
                 validation: [{ type: 'length', minLength: 2, errorMsg: 'Name is too short' }],
                 config: { autoCapitalize: 'words', textContentType: 'name' } 
-            },
+            }/*,
             {
                 key: 'handle',
                 label: 'User Handle',
@@ -26,7 +26,7 @@ const SETUP_SCHEMA: Section[] = [
                 overrideFilter: /[^a-zA-Z0-9]/g,
                 validation: [{ type: 'length', minLength: 3, errorMsg: 'Too short' }],
                 config: { autoCapitalize: 'none' }
-            }
+            }*/
         ]
     },
     {
@@ -85,6 +85,11 @@ export default function Setup() {
         } catch (e) { 
             console.error(e); 
         }
+    };
+
+    const handleCancel = async () => {
+        await AlarmManager.cancelAllAlarms();
+        alert("All alarms cancelled.");
     };
 
     return (
