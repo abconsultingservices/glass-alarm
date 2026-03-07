@@ -1,7 +1,7 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useState, useCallback } from 'react';
 import { View, Text, ActivityIndicator, Pressable } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { useRouter } from 'expo-router';
+import { useRouter, useFocusEffect } from 'expo-router';
 import { dbService } from '../services/DatabaseService';
 import { useThemedStyles } from '../hooks/useThemedStyles';
 import { GlassFormRenderer } from '../components/GlassFormRenderer';
@@ -11,39 +11,55 @@ export default function Dashboard() {
   const insets = useSafeAreaInsets();
   const { colors, styles, getPressedStyle } = useThemedStyles(); 
   
-  // Aligning state with Renderer requirements
   const [form, setForm] = useState({ name: '', email: '', phone: '' });
   const [errors, setErrors] = useState({});
   const [loading, setLoading] = useState(true);
 
-  // Define the Schema using the new view/destination properties
+  // Define the Schema using the secure tableName.fieldKey slugs
   const DASHBOARD_SCHEMA: any[] = [
     {
       sectionType: 'insetGroup',
       label: 'PROFILE INFORMATION',
       footer: 'Your data is stored locally using SQLite and Drizzle ORM for maximum privacy.',
       fields: [
-        { key: 'name', label: 'Name', destination: '/edit/name' },
-        { key: 'email', label: 'Email', mode: 'view' }, // Static row, no chevron
-        { key: 'phone', label: 'Phone', destination: '/edit/phone' }
+        { 
+          key: 'name', 
+          label: 'Name', 
+          destination: '/edit/users.name' // Matches fieldRegistry key
+        },
+        { 
+          key: 'email', 
+          label: 'Email', 
+          mode: 'view' // Static view mode
+        }, 
+        { 
+          key: 'phone', 
+          label: 'Phone', 
+          destination: '/edit/users.phone' // Matches fieldRegistry key
+        }
       ]
     }
   ];
 
-  useEffect(() => {
-    async function load() {
-      const data = await dbService.getLatestUser();
-      if (data) {
-        setForm({
-          name: data.name || '',
-          email: data.email || '',
-          phone: data.phone || ''
-        });
+  // Refresh data whenever the user returns to this screen (e.g., after an edit)
+  useFocusEffect(
+    useCallback(() => {
+      let isMounted = true;
+      async function load() {
+        const data = await dbService.getLatestUser();
+        if (data && isMounted) {
+          setForm({
+            name: data.name || '',
+            email: data.email || '',
+            phone: data.phone || ''
+          });
+        }
+        setLoading(false);
       }
-      setLoading(false);
-    }
-    load();
-  }, []);
+      load();
+      return () => { isMounted = false; };
+    }, [])
+  );
 
   const handleReset = async () => {
     const success = await dbService.resetApp();
@@ -74,7 +90,7 @@ export default function Dashboard() {
         />
       </View>
 
-      {/* Floating Destructive Action */}
+      {/* Floating Destructive Action - Styled as Liquid Glass Pill */}
       <View style={[styles.floatingButtonContainer, { bottom: Math.max(insets.bottom, 20) }]}>
         <Pressable 
           style={({ pressed }) => [

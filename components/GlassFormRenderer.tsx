@@ -1,17 +1,18 @@
 import React from 'react';
-import { View, Text, TextInput, Pressable, ScrollView } from 'react-native';
+import { View, Text, TextInput, Pressable, ScrollView, Platform } from 'react-native';
 import { useRouter } from 'expo-router';
 import { useThemedStyles } from '../hooks/useThemedStyles';
 import { validateValue, ValidationRule } from '../utils/ValidationEngine';
+import { Ionicons } from '@expo/vector-icons';
 
 interface Field {
     key: string;
     label: string;
+    type?: 'text' | 'email' | 'phone' | 'url' | 'password';
     subtext?: string;
     validation?: ValidationRule[];
     config?: any;
     overrideFilter?: RegExp;
-    // New Props for Dashboard Parity
     mode?: 'view' | 'edit'; 
     destination?: string;
 }
@@ -21,7 +22,7 @@ interface Section {
     label?: string;
     footer?: string;
     fields: Field[];
-    readOnly?: boolean; // Can set entire section to Read Only
+    readOnly?: boolean; 
 }
 
 interface Props {
@@ -36,24 +37,28 @@ export const GlassFormRenderer = ({ schema, form, setForm, errors, setErrors }: 
     const { styles, colors, getPressedStyle } = useThemedStyles();
     const router = useRouter();
 
-    const handleUpdate = (key: string, val: string, rules: ValidationRule[] = [], overrideFilter?: RegExp) => {
+    // Added 'type' parameter to handleUpdate to support smart filtering
+    const handleUpdate = (key: string, val: string, rules: ValidationRule[] = [], overrideFilter?: RegExp, type?: string) => {
         let filteredVal = val;
         if (overrideFilter) {
             filteredVal = val.replace(overrideFilter, '');
         } 
-        // 2. Fall back to "Smart Defaults" based on the key name
         else {
-            if (key === 'email') {
+            if (type === 'email' || key === 'email') {
                 filteredVal = val.replace(/[^a-zA-Z0-9@._%+-]/g, '');
             } 
-            else if (key === 'phone') {
+            else if (type === 'phone' || key === 'phone') {
                 filteredVal = val.replace(/[^0-9+\-\(\)\s,;*#]/g, '');
             }
+            else if (type === 'url' || key === 'url') {
+                filteredVal = val.replace(/[^a-zA-Z0-9\-._~:/?#[\]@!$&'()*+,;=]/g, '');
+            }
+            else if (type === 'password' || key === 'password') {
+                filteredVal = val;
+            }
             else if (key === 'name') {
-                // Defaults to allowing alpha, spaces, and common name punctuation
                 filteredVal = val.replace(/[^a-zA-Z\s\-']/g, '');
             }
-            // Add more defaults here as your app grows
         }
 
         setForm((prev: any) => ({ ...prev, [key]: filteredVal }));
@@ -74,9 +79,7 @@ export const GlassFormRenderer = ({ schema, form, setForm, errors, setErrors }: 
                             const isLast = fIdx === section.fields.length - 1;
                             const hasError = !!errors[field.key];
                             const isPill = section.sectionType === 'pills';
-                            
-                            // Determine if this specific row should be Read-Only
-                            const isReadOnly = section.readOnly || field.mode === 'view';
+                            const isReadOnly = section.readOnly || field.mode === 'view' || !!field.destination;
 
                             if (isReadOnly) {
                                 return (
@@ -85,17 +88,37 @@ export const GlassFormRenderer = ({ schema, form, setForm, errors, setErrors }: 
                                             disabled={!field.destination}
                                             onPress={() => field.destination && router.push(field.destination as any)}
                                             style={({ pressed }) => [
-                                                { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: 16, minHeight: 48 },
+                                                { 
+                                                    flexDirection: 'row', 
+                                                    alignItems: 'center', 
+                                                    paddingHorizontal: 16, 
+                                                    minHeight: 54,
+                                                    justifyContent: 'space-between'
+                                                },
                                                 field.destination && getPressedStyle(pressed)
                                             ]}
                                         >
                                             <Text style={{ fontSize: 17, color: colors.text }}>{field.label}</Text>
-                                            <View style={{ flexDirection: 'row', alignItems: 'center' }}>
-                                                <Text numberOfLines={1} style={{ fontSize: 17, color: colors.mutedText, marginRight: 8 }}>
+                                            <View style={{ 
+                                                flexDirection: 'row', 
+                                                alignItems: 'center', 
+                                                justifyContent: 'flex-end',
+                                                flex: 1, 
+                                                marginLeft: 20 
+                                            }}>
+                                                <Text 
+                                                    numberOfLines={1} 
+                                                    style={{ 
+                                                        fontSize: 17, 
+                                                        color: colors.mutedText, 
+                                                        textAlign: 'right',
+                                                        marginRight: field.destination ? 8 : 0 
+                                                    }}
+                                                >
                                                     {form[field.key] || 'Not set'}
                                                 </Text>
                                                 {field.destination && (
-                                                    <Text style={{ color: colors.mutedText, fontSize: 18, opacity: 0.5 }}>〉</Text>
+                                                    <Ionicons name="chevron-forward" size={16} color={colors.mutedText} style={{ opacity: 0.5 }} />
                                                 )}
                                             </View>
                                         </Pressable>
@@ -104,7 +127,6 @@ export const GlassFormRenderer = ({ schema, form, setForm, errors, setErrors }: 
                                 );
                             }
 
-                            // --- ORIGINAL EDITABLE MARKUP (UNCHANGED) ---
                             const inputMarkup = (
                                 <View style={isPill 
                                     ? [styles.inputContainer, hasError && { borderColor: colors.error }] 
@@ -116,7 +138,15 @@ export const GlassFormRenderer = ({ schema, form, setForm, errors, setErrors }: 
                                             value={form[field.key]}
                                             placeholder={field.label}
                                             placeholderTextColor={colors.placeholderText}
-                                            onChangeText={(t) => handleUpdate(field.key, t, field.validation, field.overrideFilter)}
+                                            // Pass field.type to handleUpdate
+                                            onChangeText={(t) => handleUpdate(field.key, t, field.validation, field.overrideFilter, field.type)}
+                                            // Map field.type to native keyboard behaviors
+                                            secureTextEntry={field.type === 'password'}
+                                            keyboardType={
+                                                field.type === 'email' ? 'email-address' : 
+                                                field.type === 'phone' ? 'phone-pad' : 
+                                                field.type === 'url' ? 'url' : 'default'
+                                            }
                                             {...field.config}
                                             dataSet={{ 'glass-input': 'true' }}
                                         />
@@ -133,14 +163,17 @@ export const GlassFormRenderer = ({ schema, form, setForm, errors, setErrors }: 
                                         <View style={styles.warningIcon}>
                                             <Text style={{ fontSize: 20 }}>⚠️</Text>
                                         </View>
-                                    ) : form[field.key]?.length > 0 && (
-                                        <Pressable 
-                                            onPress={() => handleUpdate(field.key, '', field.validation)}
-                                            style={({ pressed }) => [styles.clearIcon, getPressedStyle(pressed)]}
-                                        >
-                                            <Text style={{ color: colors.mutedText, fontSize: 18 }}>✕</Text>
-                                        </Pressable>
-                                    )}
+                                    ) : (form[field.key] && form[field.key].length > 0) ? (
+                                        // Only hide our custom X on iOS when the native clear button is active
+                                        (Platform.OS === 'ios' && field.config?.clearButtonMode === 'while-editing') ? null : (
+                                            <Pressable 
+                                                onPress={() => handleUpdate(field.key, '', field.validation)}
+                                                style={({ pressed }) => [styles.clearIcon, getPressedStyle(pressed)]}
+                                            >
+                                                <Text style={{ color: colors.mutedText, fontSize: 18 }}>✕</Text>
+                                            </Pressable>
+                                        )
+                                    ) : null}
                                 </View>
                             );
 

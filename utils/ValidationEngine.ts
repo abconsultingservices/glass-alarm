@@ -1,7 +1,7 @@
 import { Section } from '../components/GlassFormRenderer';
 
 export interface ValidationRule {
-    type: 'length' | 'email' | 'phone' | 'regex' | 'url';
+    type: 'length' | 'email' | 'phone' | 'regex' | 'url' | 'required';
     minLength?: number;
     maxLength?: number;
     pattern?: RegExp;
@@ -14,6 +14,16 @@ export const validateValue = (value: string, rules: ValidationRule[]): string =>
 
     for (const rule of rules) {
         switch (rule.type) {
+            case 'required':
+                if(value.length < 1 )
+                {
+                    return rule.errorMsg;
+                }
+                else
+                {
+                    return '';
+                }
+                break;
             case 'length':
                 if (rule.minLength && value.length < rule.minLength) return rule.errorMsg;
                 if (rule.maxLength && value.length > rule.maxLength) return rule.errorMsg;
