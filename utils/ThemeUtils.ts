@@ -279,7 +279,56 @@ export class ThemeUtils {
             },
             chevron: {
                 opacity: 0.3,
-            }
+            },
+            calendarHeaderRow: {
+                flexDirection: 'row',
+                justifyContent: 'space-between',
+                alignItems: 'center',
+                paddingHorizontal: 16,
+                height: 54,
+            },
+            glassPill: {
+                flexDirection: 'row',
+                alignItems: 'center',
+                backgroundColor: colors.glassBackground, // 0.12 alpha
+                paddingVertical: 8,
+                paddingHorizontal: 14,
+                borderRadius: 24,
+                gap: 12,
+                borderWidth: 1,
+                borderColor: colors.glassBorder,
+            },
+            pillDivider: {
+                width: 1,
+                height: 18,
+                backgroundColor: colors.glassBorder,
+            },
+            largeMonthLabel: {
+                fontSize: 34,
+                fontWeight: 'bold',
+                color: '#FFFFFF', // Specifically white for high-impact dark theme
+                paddingHorizontal: 20,
+                marginTop: 8,
+                marginBottom: -4,
+                letterSpacing: 0.41,
+            },
+            calendarEventSection: {
+                flex: 1,
+                justifyContent: 'center',
+                alignItems: 'center',
+            },
+            noEventsText: {
+                color: colors.mutedText,
+                fontSize: 20,
+                fontWeight: '600',
+                opacity: 0.5,
+            },
+            calendarFooter: {
+                flexDirection: 'row',
+                justifyContent: 'space-between',
+                alignItems: 'center',
+                paddingHorizontal: 20,
+            },
         });
     }
 }
