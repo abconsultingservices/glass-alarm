@@ -16,7 +16,8 @@ const SETUP_SCHEMA: Section[] = [
             { 
                 key: 'name', 
                 label: 'Name', 
-                validation: [{ type: 'length', minLength: 2, errorMsg: 'Name is too short' }],
+                validation: [{ type: 'required', errorMsg: 'Name is required' },
+                  { type: 'length', minLength: 2, errorMsg: 'Name is too short' }],
                 config: { autoCapitalize: 'words', textContentType: 'name' } 
             }/*,
             {

@@ -47,11 +47,13 @@ class DatabaseService {
                 throw new Error(`Unauthorized table access: ${tableName}`);
             }
 
-            // We use a template string for table/column names because they cannot be bound
-            // but the 'value' and 'id' are safely bound to the '?' placeholders.
+            const latest = await sqlite.getFirstAsync<any>(`SELECT id FROM ${tableName} ORDER BY id DESC LIMIT 1`);
+            const targetId = latest?.id || 1;
             const query = `UPDATE ${tableName} SET ${columnName} = ? WHERE id = ?`;
+
+            console.log(`Executing: UPDATE ${tableName} SET ${columnName} = '${value}' WHERE id = ${targetId}`);
             
-            await sqlite.runAsync(query, [value, id]);
+            await sqlite.runAsync(query, [value, targetId]);
             console.log(`Successfully updated ${tableName}.${columnName}`);
             return true;
         } catch (error) {

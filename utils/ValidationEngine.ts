@@ -10,7 +10,7 @@ export interface ValidationRule {
 
 export const validateValue = (value: string, rules: ValidationRule[]): string => {
     // Requirements: Error messages only happen when a field is populated
-    if (!value || rules.length === 0) return '';
+    if (rules.length === 0) return '';
 
     for (const rule of rules) {
         switch (rule.type) {
@@ -21,7 +21,7 @@ export const validateValue = (value: string, rules: ValidationRule[]): string =>
                 }
                 else
                 {
-                    return '';
+                    continue;
                 }
                 break;
             case 'length':

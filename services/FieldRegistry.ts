@@ -16,7 +16,7 @@ export const fieldRegistry: Record<string, Record<string, RegistryField>> = {
             label: 'Display Name',
             dbColumn: 'name', // Example: schema key is 'name', DB is 'full_name'
             validation: [{ type: 'required', errorMsg: 'Name is required' }],
-            overrideFilter: /[^a-zA-Z\s\-']/g,
+            overrideFilter: /[^a-zA-Z0-9\s\-']/g,
         },
         email: {
             label: 'Email Address',

@@ -1,4 +1,4 @@
-import React, { useEffect, useState, useCallback } from 'react';
+import React, { useState, useCallback } from 'react';
 import { View, Text, ActivityIndicator, Pressable } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useRouter, useFocusEffect } from 'expo-router';
@@ -11,55 +11,50 @@ export default function Dashboard() {
   const insets = useSafeAreaInsets();
   const { colors, styles, getPressedStyle } = useThemedStyles(); 
   
-  const [form, setForm] = useState({ name: '', email: '', phone: '' });
-  const [errors, setErrors] = useState({});
+  // Track the full user object to get the ID/GUID
+  const [user, setUser] = useState<any>(null);
   const [loading, setLoading] = useState(true);
 
-  // Define the Schema using the secure tableName.fieldKey slugs
+  const loadUserData = useCallback(async () => {
+    const data = await dbService.getLatestUser();
+    if (data) {
+      setUser(data);
+    }
+    setLoading(false);
+  }, []);
+
+  useFocusEffect(
+    useCallback(() => {
+      loadUserData();
+    }, [loadUserData])
+  );
+
+  // Define schema inside render or useMemo to capture the current user.id
   const DASHBOARD_SCHEMA: any[] = [
     {
       sectionType: 'insetGroup',
       label: 'PROFILE INFORMATION',
-      footer: 'Your data is stored locally using SQLite and Drizzle ORM for maximum privacy.',
+      footer: 'Your data is stored locally using SQLite for maximum privacy.',
       fields: [
         { 
           key: 'name', 
           label: 'Name', 
-          destination: '/edit/users.name' // Matches fieldRegistry key
+          // Inject the ID into the query params
+          destination: user?.id ? `/edit/users.name?id=${user.id}` : undefined 
         },
         { 
           key: 'email', 
           label: 'Email', 
-          mode: 'view' // Static view mode
+          mode: 'view' 
         }, 
         { 
           key: 'phone', 
           label: 'Phone', 
-          destination: '/edit/users.phone' // Matches fieldRegistry key
+          destination: user?.id ? `/edit/users.phone?id=${user.id}` : undefined 
         }
       ]
     }
   ];
-
-  // Refresh data whenever the user returns to this screen (e.g., after an edit)
-  useFocusEffect(
-    useCallback(() => {
-      let isMounted = true;
-      async function load() {
-        const data = await dbService.getLatestUser();
-        if (data && isMounted) {
-          setForm({
-            name: data.name || '',
-            email: data.email || '',
-            phone: data.phone || ''
-          });
-        }
-        setLoading(false);
-      }
-      load();
-      return () => { isMounted = false; };
-    }, [])
-  );
 
   const handleReset = async () => {
     const success = await dbService.resetApp();
@@ -77,28 +72,27 @@ export default function Dashboard() {
   return (
     <View style={[styles.setupContainer, { paddingTop: insets.top }]}>
       <Text style={styles.setupTitle}>
-        Welcome, {form.name.split(' ')[0] || 'Guest'}
+        Welcome, {user?.name?.split(' ')[0] || 'Guest'}
       </Text>
 
       <View style={{ flex: 1, paddingHorizontal: 20 }}>
         <GlassFormRenderer 
+          // Force re-render when user data changes
+          key={`${user?.name}-${user?.phone}`}
           schema={DASHBOARD_SCHEMA}
-          form={form}
-          setForm={setForm}
-          errors={errors}
-          setErrors={setErrors}
+          form={user || {}}
+          setForm={() => {}} // Dashboard is read-only, navigation handles updates
+          errors={{}}
+          setErrors={() => {}}
         />
       </View>
 
-      {/* Floating Destructive Action - Styled as Liquid Glass Pill */}
       <View style={[styles.floatingButtonContainer, { bottom: Math.max(insets.bottom, 20) }]}>
         <Pressable 
           style={({ pressed }) => [
             styles.button, 
             getPressedStyle(pressed),
-            { 
-              backgroundColor: colors.glassBackground
-            }
+            { backgroundColor: colors.glassBackground }
           ]} 
           onPress={handleReset}
         >
