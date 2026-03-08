@@ -82,7 +82,7 @@ export default function Setup() {
 
         try {
             await dbService.createUser(form.name, form.email, form.phone);
-            router.replace('/dashboard');
+            router.replace('/calendar');
         } catch (e) { 
             console.error(e); 
         }

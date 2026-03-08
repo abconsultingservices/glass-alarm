@@ -60,7 +60,7 @@ export default function GenericEditField() {
         </Text>
         <Pressable 
           style={[styles.button, { width: '100%', backgroundColor: colors.glassBackground }]}
-          onPress={() => router.replace('/dashboard')}
+          onPress={() => router.replace('/calendar')}
         >
           <Text style={[styles.buttonText, { color: colors.primary }]}>Go Back</Text>
         </Pressable>
@@ -74,7 +74,7 @@ export default function GenericEditField() {
         router.back();
     } else {
         // If there is no history (due to refresh or direct link), go to Dashboard
-        router.replace('/dashboard');
+        router.replace('/calendar');
     }
     };
 

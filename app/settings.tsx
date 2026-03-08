@@ -6,7 +6,7 @@ import { dbService } from '../services/DatabaseService';
 import { useThemedStyles } from '../hooks/useThemedStyles';
 import { GlassFormRenderer } from '../components/GlassFormRenderer';
 
-export default function Dashboard() {
+export default function Settings() {
   const router = useRouter();
   const insets = useSafeAreaInsets();
   const { colors, styles, getPressedStyle } = useThemedStyles(); 

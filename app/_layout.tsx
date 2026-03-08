@@ -1,19 +1,55 @@
 import { DarkTheme, DefaultTheme, ThemeProvider } from '@react-navigation/native';
-import { Stack } from "expo-router";
+import { Stack, useRouter, useSegments } from "expo-router";
 import { useEffect } from "react";
 import { Platform } from "react-native";
 import { useThemedStyles } from '../hooks/useThemedStyles';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 
 export default function RootLayout() {
   const { isDark, colors } = useThemedStyles(); 
+  const router = useRouter();
+  const segments = useSegments();
 
+  // 1. Restore last view state (Year/Month) on hard close
+  useEffect(() => {
+    const restoreNavigation = async () => {
+      // Only run this at the app root entry point
+      if (segments.length === 0 || segments[0] === 'index') {
+        try {
+          const lastView = await AsyncStorage.getItem('calendar_zoom_level');
+          const lastDate = await AsyncStorage.getItem('calendar_last_date');
+          const today = new Date().toISOString().split('T')[0];
+          
+          // Target date is either the saved one or today
+          const targetDate = lastDate || today;
+
+          if (lastView === 'year') {
+            router.replace('/calendar/year');
+          } else if (lastView === 'day') {
+            router.replace({
+              pathname: '/calendar/day',
+              params: { date: targetDate }
+            });
+          } else {
+            // Default to Month view
+            router.replace('/calendar');
+          }
+        } catch (e) {
+          console.error("Failed to restore navigation state", e);
+        }
+      }
+    };
+
+    restoreNavigation();
+  }, []);
+
+  // 2. Web CSS Injection for Glass Inputs
   useEffect(() => {
     const isWeb = typeof window !== "undefined" && (Platform?.OS === "web" || (Platform as any)?.default?.OS === "web");
 
     if (isWeb) {
       const style = document.createElement('style');
       style.innerHTML = `
-        /* Nuke the black ends and white boxes */
         [data-glass-input="true"],
         [data-glass-input="true"] input {
           background-color: transparent !important;
@@ -25,7 +61,6 @@ export default function RootLayout() {
           border: none !important;
         }
 
-        /* Target autofill for these specific inputs */
         [data-glass-input="true"]:-webkit-autofill,
         [data-glass-input="true"]:-webkit-autofill:hover, 
         [data-glass-input="true"]:-webkit-autofill:focus {
@@ -41,11 +76,6 @@ export default function RootLayout() {
           opacity: 1 !important; 
           font-weight: 500 !important;
           -webkit-text-fill-color: ${colors.placeholderText} !important;
-        }
-
-        [data-glass-input="true"]::-webkit-input-placeholder {
-          color: ${colors.placeholderText} !important;
-          font-weight: 500 !important;
         }
       `;
       document.head.appendChild(style);
@@ -63,15 +93,19 @@ export default function RootLayout() {
       <Stack screenOptions={{ headerShown: false }}>
         <Stack.Screen name="index" />
         <Stack.Screen name="setup" />
-        <Stack.Screen name="dashboard" />
-        
-        {/* Dynamic Edit Route Configuration */}
+        <Stack.Screen name="calendar/index" />
+        <Stack.Screen name="calendar/year" />
+        <Stack.Screen name="settings" />
+        {/*
+        <Stack.Screen name="routines" />
+        */}
+        {/* Modal presentation for a better iOS "Liquid Glass" edit feel */}
         <Stack.Screen 
           name="edit/[field]" 
           options={{ 
-            presentation: 'card', 
+            presentation: 'modal', 
             gestureEnabled: true,
-            animation: 'slide_from_right' // Native iOS feel
+            animation: 'slide_from_bottom' 
           }} 
         />
       </Stack>

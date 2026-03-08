@@ -1,10 +1,11 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useEffect } from 'react';
 import { View, Text, Pressable, Platform, FlatList, Switch } from 'react-native';
 import { Calendar } from 'react-native-calendars';
 import { useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { useThemedStyles } from '../../hooks/useThemedStyles';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 
 interface Routine {
   id: string;
@@ -55,6 +56,24 @@ export default function CalendarMonthView() {
 
   const isWeb = Platform.OS === 'web';
 
+  // HYDRATION EFFECT: Load the date selected from Year View
+  useEffect(() => {
+    const hydrateState = async () => {
+      try {
+        const savedDate = await AsyncStorage.getItem('calendar_last_date');
+        if (savedDate) {
+          setCurrentMonth(savedDate);
+          setSelectedDate(savedDate);
+        }
+        await AsyncStorage.setItem('calendar_zoom_level', 'month');
+      } catch (e) {
+        console.error("Failed to hydrate calendar state", e);
+      }
+    };
+
+    hydrateState();
+  }, []);
+
   const { monthName, year } = useMemo(() => {
     const [y, m, d] = currentMonth.split('-').map(Number);
     const date = new Date(y, m - 1, d || 1);
@@ -63,6 +82,24 @@ export default function CalendarMonthView() {
       year: y
     };
   }, [currentMonth]);
+
+  // NAVIGATION HELPERS
+  const goToYear = async () => {
+    // Save current month date so Year View knows which year to scroll to
+    await AsyncStorage.setItem('calendar_last_date', currentMonth);
+    await AsyncStorage.setItem('calendar_zoom_level', 'year');
+    router.push('/calendar/year');
+  };
+
+  const goToDay = async (dateString: string) => {
+    await AsyncStorage.setItem('calendar_zoom_level', 'day');
+    await AsyncStorage.setItem('calendar_last_date', dateString);
+
+    router.push({
+      pathname: '/calendar/day',
+      params: { date: dateString }
+    });
+  };
 
   const calendarTheme = useMemo(() => ({
     backgroundColor: 'transparent',
@@ -99,18 +136,16 @@ export default function CalendarMonthView() {
     setRoutines(prev => prev.map(r => r.id === id ? { ...r, isEnabled: !r.isEnabled } : r));
   };
 
-  const handleTodayPress = () => {
+  const handleTodayPress = async () => {
     const isShowingCurrentMonth = currentMonth.substring(0, 7) === systemToday.substring(0, 7);
     const isTodaySelected = selectedDate === systemToday;
 
     if (!isShowingCurrentMonth || !isTodaySelected) {
       setCurrentMonth(systemToday);
       setSelectedDate(systemToday);
+      await AsyncStorage.setItem('calendar_last_date', systemToday);
     } else {
-      router.push({
-        pathname: '/calendar/day',
-        params: { date: systemToday }
-      });
+      await goToDay(systemToday);
     }
   };
 
@@ -157,16 +192,17 @@ export default function CalendarMonthView() {
       {/* Header Row */}
       <View style={styles.calendarHeaderRow}>
         <Pressable 
-          onPress={() => router.push('/calendar/year')}
+          onPress={goToYear}
           style={({ pressed }) => [getPressedStyle(pressed), styles.glassPill]}
         >
           <Ionicons name="chevron-back" size={20} color={colors.text} />
+          {/* Dynamically reflects current scrolled/swiped year */}
           <Text style={{ color: colors.text, fontSize: 17 }}>{year}</Text>
         </Pressable>
         
         <View style={styles.glassPill}>
-          <Pressable onPress={() => router.replace('/dashboard')} style={({ pressed }) => getPressedStyle(pressed)}>
-            <Ionicons name="grid-outline" size={22} color={colors.text} />
+          <Pressable onPress={() => router.replace('/settings')} style={({ pressed }) => getPressedStyle(pressed)}>
+            <Ionicons name="settings-outline" size={22} color={colors.text} />
           </Pressable>
           <View style={styles.pillDivider} />
           <Ionicons name="search-outline" size={22} color={colors.text} />
@@ -184,8 +220,19 @@ export default function CalendarMonthView() {
           theme={calendarTheme}
           enableSwipeMonths
           hideArrows={!isWeb} 
-          onMonthChange={(m) => setCurrentMonth(m.dateString)}
-          onDayPress={(day) => setSelectedDate(day.dateString)}
+          onMonthChange={async (m) => {
+            setCurrentMonth(m.dateString);
+            // Crucial: Update storage as user swipes through months/years
+            await AsyncStorage.setItem('calendar_last_date', m.dateString);
+          }}
+          onDayPress={async (day) => {
+            if (day.dateString === selectedDate) {
+              await goToDay(day.dateString);
+            } else {
+              setSelectedDate(day.dateString);
+              await AsyncStorage.setItem('calendar_last_date', day.dateString);
+            }
+          }}
           renderHeader={() => (
             isWeb ? <Text style={{ color: colors.text, fontSize: 18, fontWeight: '600' }}>{monthName}</Text> : null
           )}
@@ -220,6 +267,16 @@ export default function CalendarMonthView() {
         >
           <Text style={{ color: colors.text, fontSize: 17, fontWeight: '500' }}>
             Today
+          </Text>
+        </Pressable>
+
+        <Pressable 
+          onPress={() => router.push('/routines')} 
+          style={({ pressed }) => [getPressedStyle(pressed), styles.glassPill, { paddingHorizontal: 16, flexDirection: 'row', gap: 8 }]}
+        >
+          <Ionicons name="calendar-outline" size={20} color={colors.text} />
+          <Text style={{ color: colors.text, fontSize: 17, fontWeight: '500' }}>
+            Routines
           </Text>
         </Pressable>
       </View>
