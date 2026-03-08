@@ -15,7 +15,7 @@ export default function Index() {
       const exists = await dbService.hasUsers();
       
       if (exists) {
-        router.replace('/dashboard');
+        router.replace('/calendar');
       } else {
         router.replace('/setup');
       }
