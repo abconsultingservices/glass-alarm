@@ -1,21 +1,57 @@
 import React, { useState, useMemo } from 'react';
-import { View, Text, Pressable, Platform } from 'react-native';
+import { View, Text, Pressable, Platform, FlatList, Switch } from 'react-native';
 import { Calendar } from 'react-native-calendars';
 import { useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { useThemedStyles } from '../../hooks/useThemedStyles';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
+interface Routine {
+  id: string;
+  name: string;
+  repeat: string;
+  startTime: Date;
+  endTime: Date;
+  isEnabled: boolean;
+}
+
+const MOCK_ROUTINES: Routine[] = [
+  {
+    id: '1',
+    name: 'Morning Meditation',
+    repeat: 'Daily',
+    startTime: new Date(2026, 2, 8, 7, 0),
+    endTime: new Date(2026, 2, 8, 7, 30),
+    isEnabled: true,
+  },
+  {
+    id: '2',
+    name: 'Deep Work Session',
+    repeat: 'Weekdays',
+    startTime: new Date(2026, 2, 8, 9, 0),
+    endTime: new Date(2026, 2, 8, 12, 0),
+    isEnabled: true,
+  },
+  {
+    id: '3',
+    name: 'Gym / HIIT',
+    repeat: 'Mon, Wed, Fri',
+    startTime: new Date(2026, 2, 8, 17, 30),
+    endTime: new Date(2026, 2, 8, 18, 30),
+    isEnabled: false,
+  },
+];
+
 export default function CalendarMonthView() {
   const router = useRouter();
   const insets = useSafeAreaInsets();
   const { colors, styles, getPressedStyle } = useThemedStyles();
   
-  // Real-time Today: 2026-03-08
   const systemToday = new Date().toISOString().split('T')[0];
   
   const [currentMonth, setCurrentMonth] = useState(systemToday);
   const [selectedDate, setSelectedDate] = useState(systemToday);
+  const [routines, setRoutines] = useState(MOCK_ROUTINES);
 
   const isWeb = Platform.OS === 'web';
 
@@ -51,16 +87,26 @@ export default function CalendarMonthView() {
     }
   }), [colors, isWeb]);
 
+  const formatTime = (date: Date) => {
+    return date.toLocaleTimeString([], { 
+      hour: 'numeric', 
+      minute: '2-digit', 
+      hour12: true 
+    });
+  };
+
+  const handleToggleRoutine = (id: string) => {
+    setRoutines(prev => prev.map(r => r.id === id ? { ...r, isEnabled: !r.isEnabled } : r));
+  };
+
   const handleTodayPress = () => {
     const isShowingCurrentMonth = currentMonth.substring(0, 7) === systemToday.substring(0, 7);
     const isTodaySelected = selectedDate === systemToday;
 
     if (!isShowingCurrentMonth || !isTodaySelected) {
-      // Step 1: Snap to Today and select the date
       setCurrentMonth(systemToday);
       setSelectedDate(systemToday);
     } else {
-      // Step 2: If already on Today, zoom into day view
       router.push({
         pathname: '/calendar/day',
         params: { date: systemToday }
@@ -69,9 +115,7 @@ export default function CalendarMonthView() {
   };
 
   const markedDates = useMemo(() => {
-    const marks: any = {
-      [selectedDate]: { selected: true }
-    };
+    const marks: any = { [selectedDate]: { selected: true } };
     if (selectedDate === systemToday) {
       marks[systemToday] = {
         selected: true,
@@ -81,6 +125,31 @@ export default function CalendarMonthView() {
     }
     return marks;
   }, [selectedDate, systemToday, colors.error]);
+
+  const renderRoutineItem = ({ item }: { item: Routine }) => {
+    const isOff = !item.isEnabled;
+    return (
+      <View style={[styles.insetGroup, { marginBottom: 12, padding: 16, flexDirection: 'row', alignItems: 'center' }]}>
+        <View style={{ flex: 1, opacity: isOff ? 0.4 : 1 }}>
+          <Text style={{ color: colors.text, fontSize: 17, fontWeight: '600' }}>{item.name}</Text>
+          <Text style={{ color: colors.mutedText, fontSize: 13, marginTop: 2 }}>{item.repeat}</Text>
+        </View>
+        
+        <View style={{ alignItems: 'flex-end', marginRight: 12, opacity: isOff ? 0.4 : 1 }}>
+          <Text style={{ color: colors.text, fontSize: 15, fontWeight: '500' }}>{formatTime(item.startTime)}</Text>
+          <Text style={{ color: colors.mutedText, fontSize: 12 }}>to {formatTime(item.endTime)}</Text>
+        </View>
+
+        <Switch
+          value={item.isEnabled}
+          trackColor={{ false: colors.glassBorder, true: colors.success }}
+          thumbColor={'#FFF'}
+          ios_backgroundColor={colors.glassBackground}
+          onValueChange={() => handleToggleRoutine(item.id)}
+        />
+      </View>
+    );
+  };
 
   return (
     <View style={[styles.setupContainer, { flex: 1, paddingTop: insets.top }]}>
@@ -127,11 +196,23 @@ export default function CalendarMonthView() {
         />
       </View>
 
-      {/* Restored Empty State */}
-      <View style={styles.calendarEventSection}>
-          <Text style={styles.noEventsText}>No Routines</Text>
+      {/* Routine List Section */}
+      <View style={{ flex: 1, paddingHorizontal: 16, marginTop: 15 }}>
+        <FlatList
+          data={routines}
+          renderItem={renderRoutineItem}
+          keyExtractor={(item) => item.id}
+          showsVerticalScrollIndicator={false}
+          contentContainerStyle={{ paddingBottom: 100 }}
+          ListEmptyComponent={
+            <View style={styles.calendarEventSection}>
+              <Text style={styles.noEventsText}>No Routines</Text>
+            </View>
+          }
+        />
       </View>
 
+      {/* Footer Nav */}
       <View style={[styles.calendarFooter, { paddingBottom: Math.max(insets.bottom, 20) }]}>
         <Pressable 
           onPress={handleTodayPress} 
