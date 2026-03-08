@@ -11,7 +11,9 @@ export default function CalendarMonthView() {
   const insets = useSafeAreaInsets();
   const { colors, styles, getPressedStyle } = useThemedStyles();
   
+  // Real-time Today: 2026-03-08
   const systemToday = new Date().toISOString().split('T')[0];
+  
   const [currentMonth, setCurrentMonth] = useState(systemToday);
   const [selectedDate, setSelectedDate] = useState(systemToday);
 
@@ -19,7 +21,7 @@ export default function CalendarMonthView() {
 
   const { monthName, year } = useMemo(() => {
     const [y, m, d] = currentMonth.split('-').map(Number);
-    const date = new Date(y, m - 1, d);
+    const date = new Date(y, m - 1, d || 1);
     return {
       monthName: date.toLocaleString('default', { month: 'long' }),
       year: y
@@ -36,28 +38,13 @@ export default function CalendarMonthView() {
     dayTextColor: colors.text,    
     textDisabledColor: colors.placeholderText,
     dotColor: colors.primary,
-    
-    // We hide the default text because we are using renderHeader below
     monthTextColor: 'transparent', 
-    
     textDayFontSize: 19,
     textDayHeaderFontSize: 12,
     textDayHeaderFontWeight: '600',
-    
     'stylesheet.calendar.header': {
-      header: { 
-        height: isWeb ? 40 : 0, 
-        marginTop: 0, 
-        marginBottom: 0, 
-        flexDirection: 'row',
-        justifyContent: 'space-between',
-        alignItems: 'center'
-      },
-      week: { 
-        marginTop: isWeb ? 10 : 0, 
-        flexDirection: 'row', 
-        justifyContent: 'space-around' 
-      }
+      header: { height: isWeb ? 40 : 0, marginTop: 0, marginBottom: 0, flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
+      week: { marginTop: isWeb ? 10 : 0, flexDirection: 'row', justifyContent: 'space-around' }
     },
     'stylesheet.calendar.main': {
       monthView: { marginTop: isWeb ? 0 : -5 }
@@ -66,18 +53,39 @@ export default function CalendarMonthView() {
 
   const handleTodayPress = () => {
     const isShowingCurrentMonth = currentMonth.substring(0, 7) === systemToday.substring(0, 7);
-    if (isShowingCurrentMonth) {
-      router.push(`/calendar/day?date=${systemToday}`);
-    } else {
+    const isTodaySelected = selectedDate === systemToday;
+
+    if (!isShowingCurrentMonth || !isTodaySelected) {
+      // Step 1: Snap to Today and select the date
       setCurrentMonth(systemToday);
       setSelectedDate(systemToday);
+    } else {
+      // Step 2: If already on Today, zoom into day view
+      router.push({
+        pathname: '/calendar/day',
+        params: { date: systemToday }
+      });
     }
   };
+
+  const markedDates = useMemo(() => {
+    const marks: any = {
+      [selectedDate]: { selected: true }
+    };
+    if (selectedDate === systemToday) {
+      marks[systemToday] = {
+        selected: true,
+        selectedColor: colors.error, 
+        selectedTextColor: '#FFFFFF',
+      };
+    }
+    return marks;
+  }, [selectedDate, systemToday, colors.error]);
 
   return (
     <View style={[styles.setupContainer, { flex: 1, paddingTop: insets.top }]}>
       
-      {/* Top Header Row */}
+      {/* Header Row */}
       <View style={styles.calendarHeaderRow}>
         <Pressable 
           onPress={() => router.push('/calendar/year')}
@@ -109,25 +117,19 @@ export default function CalendarMonthView() {
           hideArrows={!isWeb} 
           onMonthChange={(m) => setCurrentMonth(m.dateString)}
           onDayPress={(day) => setSelectedDate(day.dateString)}
-          // ⬇️ THIS REMOVES THE YEAR FROM THE WEB NAV
           renderHeader={() => (
-            isWeb ? (
-              <Text style={{ color: colors.text, fontSize: 18, fontWeight: '600' }}>
-                {monthName}
-              </Text>
-            ) : null
+            isWeb ? <Text style={{ color: colors.text, fontSize: 18, fontWeight: '600' }}>{monthName}</Text> : null
           )}
           renderArrow={(dir) => (
             <Ionicons name={dir === 'left' ? 'chevron-back' : 'chevron-forward'} size={24} color={colors.text} />
           )}
-          markedDates={{
-            [selectedDate]: { selected: true },
-          }}
+          markedDates={markedDates}
         />
       </View>
 
+      {/* Restored Empty State */}
       <View style={styles.calendarEventSection}>
-          <Text style={styles.noEventsText}>No Events</Text>
+          <Text style={styles.noEventsText}>No Routines</Text>
       </View>
 
       <View style={[styles.calendarFooter, { paddingBottom: Math.max(insets.bottom, 20) }]}>
@@ -135,11 +137,7 @@ export default function CalendarMonthView() {
           onPress={handleTodayPress} 
           style={({ pressed }) => [getPressedStyle(pressed), styles.glassPill, { paddingHorizontal: 22 }]}
         >
-          <Text style={{ 
-            color: selectedDate === systemToday ? colors.text : colors.error, 
-            fontSize: 17, 
-            fontWeight: '500' 
-          }}>
+          <Text style={{ color: colors.text, fontSize: 17, fontWeight: '500' }}>
             Today
           </Text>
         </Pressable>
