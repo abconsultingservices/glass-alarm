@@ -1,11 +1,12 @@
 import React, { useState, useMemo, useEffect } from 'react';
-import { View, Text, Pressable, Platform, FlatList, Switch } from 'react-native';
+import { View, Text, Pressable, Platform, FlatList, Switch, StyleSheet } from 'react-native';
 import { Calendar } from 'react-native-calendars';
 import { useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { useThemedStyles } from '../../hooks/useThemedStyles';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import { shouldShowRoutineOnDate } from '../../utils/routineEngine';
 
 interface Routine {
   id: string;
@@ -14,6 +15,16 @@ interface Routine {
   startTime: Date;
   endTime: Date;
   isEnabled: boolean;
+  frequencyHours?: number;
+  maxOccurrences?: number;
+  instanceIndex?: number;
+  isInstanceEnabled?: boolean;
+}
+
+interface RoutineException {
+  routineId: string;
+  date: string; 
+  instanceIndex: number;
 }
 
 const MOCK_ROUTINES: Routine[] = [
@@ -27,179 +38,117 @@ const MOCK_ROUTINES: Routine[] = [
   },
   {
     id: '2',
-    name: 'Deep Work Session',
-    repeat: 'Weekdays',
+    name: 'Hydration / Water',
+    repeat: 'Daily',
     startTime: new Date(2026, 2, 8, 9, 0),
-    endTime: new Date(2026, 2, 8, 12, 0),
+    endTime: new Date(2026, 2, 8, 9, 15),
     isEnabled: true,
+    frequencyHours: 4,
+    maxOccurrences: 3, 
   },
-  {
-    id: '3',
-    name: 'Gym / HIIT',
-    repeat: 'Mon, Wed, Fri',
-    startTime: new Date(2026, 2, 8, 17, 30),
-    endTime: new Date(2026, 2, 8, 18, 30),
-    isEnabled: false,
-  },
+];
+
+const STATIC_EXCEPTIONS: RoutineException[] = [
+  { routineId: '2', date: '2026-03-08', instanceIndex: 1 }
 ];
 
 export default function CalendarMonthView() {
   const router = useRouter();
   const insets = useSafeAreaInsets();
   const { colors, styles, getPressedStyle } = useThemedStyles();
-  
   const systemToday = new Date().toISOString().split('T')[0];
   
   const [currentMonth, setCurrentMonth] = useState(systemToday);
   const [selectedDate, setSelectedDate] = useState(systemToday);
   const [routines, setRoutines] = useState(MOCK_ROUTINES);
+  const [exceptions, setExceptions] = useState(STATIC_EXCEPTIONS);
 
   const isWeb = Platform.OS === 'web';
 
-  // HYDRATION EFFECT: Load the date selected from Year View
-  useEffect(() => {
-    const hydrateState = async () => {
-      try {
-        const savedDate = await AsyncStorage.getItem('calendar_last_date');
-        if (savedDate) {
-          setCurrentMonth(savedDate);
-          setSelectedDate(savedDate);
-        }
-        await AsyncStorage.setItem('calendar_zoom_level', 'month');
-      } catch (e) {
-        console.error("Failed to hydrate calendar state", e);
-      }
-    };
+  const displayRoutines = useMemo(() => {
+    const [y, m, d] = selectedDate.split('-').map(Number);
+    const targetDate = new Date(y, m - 1, d);
+    const expandedList: Routine[] = [];
 
-    hydrateState();
+    routines.forEach(routine => {
+      if (shouldShowRoutineOnDate(routine, targetDate)) {
+        const isMultiHit = routine.frequencyHours && routine.maxOccurrences;
+        const count = isMultiHit ? routine.maxOccurrences! : 1;
+
+        for (let i = 0; i < count; i++) {
+          const hasException = exceptions.some(ex => 
+            ex.routineId === routine.id && 
+            ex.date === selectedDate && 
+            ex.instanceIndex === i
+          );
+
+          const start = new Date(routine.startTime);
+          const end = new Date(routine.endTime);
+          
+          if (isMultiHit) {
+            start.setHours(routine.startTime.getHours() + (i * routine.frequencyHours!));
+            end.setHours(routine.endTime.getHours() + (i * routine.frequencyHours!));
+          }
+
+          expandedList.push({
+            ...routine,
+            id: isMultiHit ? `${routine.id}-v${i}` : routine.id,
+            startTime: start,
+            endTime: end,
+            instanceIndex: i,
+            isInstanceEnabled: routine.isEnabled && !hasException 
+          });
+        }
+      }
+    });
+
+    return expandedList.sort((a, b) => a.startTime.getTime() - b.startTime.getTime());
+  }, [selectedDate, routines, exceptions]);
+
+  useEffect(() => {
+    const hydrate = async () => {
+      const saved = await AsyncStorage.getItem('calendar_last_date');
+      if (saved) {
+        setCurrentMonth(saved);
+        setSelectedDate(saved);
+      }
+      await AsyncStorage.setItem('calendar_zoom_level', 'month');
+    };
+    hydrate();
   }, []);
 
   const { monthName, year } = useMemo(() => {
     const [y, m, d] = currentMonth.split('-').map(Number);
     const date = new Date(y, m - 1, d || 1);
-    return {
-      monthName: date.toLocaleString('default', { month: 'long' }),
-      year: y
-    };
+    return { monthName: date.toLocaleString('default', { month: 'long' }), year: y };
   }, [currentMonth]);
 
-  // NAVIGATION HELPERS
+  const handleToggleInstance = (item: Routine) => {
+    const rId = item.id.split('-v')[0];
+    const idx = item.instanceIndex ?? 0;
+    const existingIdx = exceptions.findIndex(ex => ex.routineId === rId && ex.date === selectedDate && ex.instanceIndex === idx);
+    if (existingIdx > -1) {
+      setExceptions(prev => prev.filter((_, i) => i !== existingIdx));
+    } else {
+      setExceptions(prev => [...prev, { routineId: rId, date: selectedDate, instanceIndex: idx }]);
+    }
+  };
+
   const goToYear = async () => {
-    // Save current month date so Year View knows which year to scroll to
     await AsyncStorage.setItem('calendar_last_date', currentMonth);
     await AsyncStorage.setItem('calendar_zoom_level', 'year');
     router.push('/calendar/year');
   };
 
-  const goToDay = async (dateString: string) => {
-    await AsyncStorage.setItem('calendar_zoom_level', 'day');
-    await AsyncStorage.setItem('calendar_last_date', dateString);
-
-    router.push({
-      pathname: '/calendar/day',
-      params: { date: dateString }
-    });
-  };
-
-  const calendarTheme = useMemo(() => ({
-    backgroundColor: 'transparent',
-    calendarBackground: 'transparent',
-    textSectionTitleColor: colors.mutedText,
-    selectedDayBackgroundColor: colors.text, 
-    selectedDayTextColor: colors.background, 
-    todayTextColor: colors.error, 
-    dayTextColor: colors.text,    
-    textDisabledColor: colors.placeholderText,
-    dotColor: colors.primary,
-    monthTextColor: 'transparent', 
-    textDayFontSize: 19,
-    textDayHeaderFontSize: 12,
-    textDayHeaderFontWeight: '600',
-    'stylesheet.calendar.header': {
-      header: { height: isWeb ? 40 : 0, marginTop: 0, marginBottom: 0, flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
-      week: { marginTop: isWeb ? 10 : 0, flexDirection: 'row', justifyContent: 'space-around' }
-    },
-    'stylesheet.calendar.main': {
-      monthView: { marginTop: isWeb ? 0 : -5 }
-    }
-  }), [colors, isWeb]);
-
-  const formatTime = (date: Date) => {
-    return date.toLocaleTimeString([], { 
-      hour: 'numeric', 
-      minute: '2-digit', 
-      hour12: true 
-    });
-  };
-
-  const handleToggleRoutine = (id: string) => {
-    setRoutines(prev => prev.map(r => r.id === id ? { ...r, isEnabled: !r.isEnabled } : r));
-  };
-
-  const handleTodayPress = async () => {
-    const isShowingCurrentMonth = currentMonth.substring(0, 7) === systemToday.substring(0, 7);
-    const isTodaySelected = selectedDate === systemToday;
-
-    if (!isShowingCurrentMonth || !isTodaySelected) {
-      setCurrentMonth(systemToday);
-      setSelectedDate(systemToday);
-      await AsyncStorage.setItem('calendar_last_date', systemToday);
-    } else {
-      await goToDay(systemToday);
-    }
-  };
-
-  const markedDates = useMemo(() => {
-    const marks: any = { [selectedDate]: { selected: true } };
-    if (selectedDate === systemToday) {
-      marks[systemToday] = {
-        selected: true,
-        selectedColor: colors.error, 
-        selectedTextColor: '#FFFFFF',
-      };
-    }
-    return marks;
-  }, [selectedDate, systemToday, colors.error]);
-
-  const renderRoutineItem = ({ item }: { item: Routine }) => {
-    const isOff = !item.isEnabled;
-    return (
-      <View style={[styles.insetGroup, { marginBottom: 12, padding: 16, flexDirection: 'row', alignItems: 'center' }]}>
-        <View style={{ flex: 1, opacity: isOff ? 0.4 : 1 }}>
-          <Text style={{ color: colors.text, fontSize: 17, fontWeight: '600' }}>{item.name}</Text>
-          <Text style={{ color: colors.mutedText, fontSize: 13, marginTop: 2 }}>{item.repeat}</Text>
-        </View>
-        
-        <View style={{ alignItems: 'flex-end', marginRight: 12, opacity: isOff ? 0.4 : 1 }}>
-          <Text style={{ color: colors.text, fontSize: 15, fontWeight: '500' }}>{formatTime(item.startTime)}</Text>
-          <Text style={{ color: colors.mutedText, fontSize: 12 }}>to {formatTime(item.endTime)}</Text>
-        </View>
-
-        <Switch
-          value={item.isEnabled}
-          trackColor={{ false: colors.glassBorder, true: colors.success }}
-          thumbColor={'#FFF'}
-          ios_backgroundColor={colors.glassBackground}
-          onValueChange={() => handleToggleRoutine(item.id)}
-        />
-      </View>
-    );
-  };
+  const formatTime = (date: Date) => date.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit', hour12: true });
 
   return (
     <View style={[styles.setupContainer, { flex: 1, paddingTop: insets.top }]}>
-      
-      {/* Header Row */}
       <View style={styles.calendarHeaderRow}>
-        <Pressable 
-          onPress={goToYear}
-          style={({ pressed }) => [getPressedStyle(pressed), styles.glassPill]}
-        >
+        <Pressable onPress={goToYear} style={({ pressed }) => [getPressedStyle(pressed), styles.glassPill]}>
           <Ionicons name="chevron-back" size={20} color={colors.text} />
-          {/* Dynamically reflects current scrolled/swiped year */}
           <Text style={{ color: colors.text, fontSize: 17 }}>{year}</Text>
         </Pressable>
-        
         <View style={styles.glassPill}>
           <Pressable onPress={() => router.replace('/settings')} style={({ pressed }) => getPressedStyle(pressed)}>
             <Ionicons name="settings-outline" size={22} color={colors.text} />
@@ -211,75 +160,109 @@ export default function CalendarMonthView() {
         </View>
       </View>
 
-      {!isWeb && <Text style={[styles.largeMonthLabel, { color: colors.text }]}>{monthName}</Text>}
-
-      <View style={{ paddingHorizontal: isWeb ? 20 : 5 }}>
+      <View style={{ paddingHorizontal: 5 }}>
         <Calendar
-          key={`${currentMonth}-${colors.isDark}`} 
+          key={`${currentMonth}-${colors.isDark}`}
           current={currentMonth}
-          theme={calendarTheme}
-          enableSwipeMonths
-          hideArrows={!isWeb} 
-          onMonthChange={async (m) => {
+          enableSwipeMonths={true}
+          hideArrows={true}
+          onMonthChange={(m) => {
             setCurrentMonth(m.dateString);
-            // Crucial: Update storage as user swipes through months/years
-            await AsyncStorage.setItem('calendar_last_date', m.dateString);
+            AsyncStorage.setItem('calendar_last_date', m.dateString);
           }}
-          onDayPress={async (day) => {
-            if (day.dateString === selectedDate) {
-              await goToDay(day.dateString);
-            } else {
-              setSelectedDate(day.dateString);
-              await AsyncStorage.setItem('calendar_last_date', day.dateString);
+          onDayPress={(day) => {
+            setSelectedDate(day.dateString);
+            AsyncStorage.setItem('calendar_last_date', day.dateString);
+          }}
+          markedDates={{ [selectedDate]: { selected: true, selectedColor: colors.text, selectedTextColor: colors.background } }}
+          
+          renderHeader={() => (
+            <View style={localStyles.customHeaderContainer}>
+              {isWeb && (
+                <Pressable onPress={() => {
+                  const d = new Date(currentMonth);
+                  d.setMonth(d.getMonth() - 1);
+                  setCurrentMonth(d.toISOString().split('T')[0]);
+                }}>
+                  <Ionicons name="chevron-back" size={24} color={colors.text} />
+                </Pressable>
+              )}
+              
+              <Text style={[styles.largeMonthLabel, { color: colors.text, marginHorizontal: 20, fontSize: isWeb ? 32 : 24 }]}>
+                {monthName} {isWeb ? '' : year}
+              </Text>
+
+              {isWeb && (
+                <Pressable onPress={() => {
+                  const d = new Date(currentMonth);
+                  d.setMonth(d.getMonth() + 1);
+                  setCurrentMonth(d.toISOString().split('T')[0]);
+                }}>
+                  <Ionicons name="chevron-forward" size={24} color={colors.text} />
+                </Pressable>
+              )}
+            </View>
+          )}
+
+          theme={{
+            calendarBackground: 'transparent',
+            dayTextColor: colors.text,
+            todayTextColor: colors.error,
+            monthTextColor: 'transparent',
+            textSectionTitleColor: colors.mutedText,
+            selectedDayBackgroundColor: colors.text,
+            selectedDayTextColor: colors.background,
+            'stylesheet.calendar.header': {
+              header: { flexDirection: 'row', justifyContent: 'center', marginTop: 10, alignItems: 'center' }
             }
           }}
-          renderHeader={() => (
-            isWeb ? <Text style={{ color: colors.text, fontSize: 18, fontWeight: '600' }}>{monthName}</Text> : null
-          )}
-          renderArrow={(dir) => (
-            <Ionicons name={dir === 'left' ? 'chevron-back' : 'chevron-forward'} size={24} color={colors.text} />
-          )}
-          markedDates={markedDates}
         />
       </View>
 
-      {/* Routine List Section */}
       <View style={{ flex: 1, paddingHorizontal: 16, marginTop: 15 }}>
         <FlatList
-          data={routines}
-          renderItem={renderRoutineItem}
+          data={displayRoutines}
           keyExtractor={(item) => item.id}
-          showsVerticalScrollIndicator={false}
-          contentContainerStyle={{ paddingBottom: 100 }}
-          ListEmptyComponent={
-            <View style={styles.calendarEventSection}>
-              <Text style={styles.noEventsText}>No Routines</Text>
+          renderItem={({ item }) => (
+            <View style={[styles.insetGroup, { marginBottom: 12, padding: 16, flexDirection: 'row', alignItems: 'center' }]}>
+              <View style={{ flex: 1, opacity: item.isInstanceEnabled ? 1 : 0.4 }}>
+                <Text style={{ color: colors.text, fontSize: 17, fontWeight: '600' }}>{item.name}</Text>
+                <Text style={{ color: colors.mutedText, fontSize: 13, marginTop: 2 }}>{item.repeat}</Text>
+              </View>
+              <View style={{ alignItems: 'flex-end', marginRight: 12, opacity: item.isInstanceEnabled ? 1 : 0.4 }}>
+                <Text style={{ color: colors.text, fontSize: 15, fontWeight: '500' }}>{formatTime(item.startTime)}</Text>
+                <Text style={{ color: colors.mutedText, fontSize: 12 }}>to {formatTime(item.endTime)}</Text>
+              </View>
+              <Switch
+                value={item.isInstanceEnabled} 
+                trackColor={{ false: colors.glassBorder, true: colors.success }}
+                thumbColor={'#FFF'}
+                onValueChange={() => handleToggleInstance(item)}
+              />
             </View>
-          }
+          )}
+          ListEmptyComponent={<Text style={{ color: colors.mutedText, textAlign: 'center', marginTop: 20 }}>No Routines</Text>}
         />
       </View>
 
-      {/* Footer Nav */}
       <View style={[styles.calendarFooter, { paddingBottom: Math.max(insets.bottom, 20) }]}>
-        <Pressable 
-          onPress={handleTodayPress} 
-          style={({ pressed }) => [getPressedStyle(pressed), styles.glassPill, { paddingHorizontal: 22 }]}
-        >
-          <Text style={{ color: colors.text, fontSize: 17, fontWeight: '500' }}>
-            Today
-          </Text>
+        <Pressable onPress={() => { setSelectedDate(systemToday); setCurrentMonth(systemToday); }} style={styles.glassPill}>
+          <Text style={{ color: colors.text, fontSize: 17, paddingHorizontal: 20 }}>Today</Text>
         </Pressable>
-
-        <Pressable 
-          onPress={() => router.push('/routines')} 
-          style={({ pressed }) => [getPressedStyle(pressed), styles.glassPill, { paddingHorizontal: 16, flexDirection: 'row', gap: 8 }]}
-        >
+        <Pressable onPress={() => router.push('/routines')} style={[styles.glassPill, { flexDirection: 'row', gap: 8, paddingHorizontal: 15 }]}>
           <Ionicons name="calendar-outline" size={20} color={colors.text} />
-          <Text style={{ color: colors.text, fontSize: 17, fontWeight: '500' }}>
-            Routines
-          </Text>
+          <Text style={{ color: colors.text, fontSize: 17 }}>Routines</Text>
         </Pressable>
       </View>
     </View>
   );
 }
+
+const localStyles = StyleSheet.create({
+  customHeaderContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    width: '100%',
+  }
+});
