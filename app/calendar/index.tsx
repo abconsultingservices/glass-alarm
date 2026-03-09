@@ -1,7 +1,7 @@
-import React, { useState, useMemo, useEffect } from 'react';
+import React, { useState, useMemo, useEffect, useCallback } from 'react';
 import { View, Text, Pressable, Platform, FlatList, Switch, StyleSheet, Dimensions } from 'react-native';
 import { Calendar } from 'react-native-calendars'; 
-import { useRouter } from 'expo-router';
+import { useRouter, useFocusEffect } from 'expo-router'; 
 import { Ionicons } from '@expo/vector-icons';
 import { useThemedStyles } from '../../hooks/useThemedStyles';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -73,26 +73,39 @@ export default function CalendarMonthView() {
   const isWeb = Platform.OS === 'web';
   let touchY = 0; 
 
+  // --- SYNC ON FOCUS ---
+  useFocusEffect(
+    useCallback(() => {
+      const syncState = async () => {
+        const savedDate = await AsyncStorage.getItem('calendar_last_date');
+        if (savedDate) {
+          setSelectedDate(savedDate);
+          // FIXED: When coming back from Day view, ensure the calendar jumps to that month
+          setCurrentMonth(savedDate.substring(0, 7) + '-01');
+        }
+      };
+      syncState();
+    }, [])
+  );
+
   useEffect(() => {
     const hydrate = async () => {
-      const saved = await AsyncStorage.getItem('calendar_last_date');
-      if (saved) {
-        setCurrentMonth(saved);
-        setSelectedDate(saved);
-      }
       await AsyncStorage.setItem('calendar_zoom_level', 'month');
     };
     hydrate();
   }, []);
 
-  // --- DRILL DOWN LOGIC ---
+  // --- DRILL DOWN & MONTH SYNC LOGIC ---
   const handleDatePress = (dateString: string) => {
     if (selectedDate === dateString) {
-      // If already selected, drill into Day view
       router.push('/calendar/day');
     } else {
-      // Otherwise, just select it
       setSelectedDate(dateString);
+      // FIXED: Ensure calendar view follows the selection if it's a different month
+      const targetMonth = dateString.substring(0, 7) + '-01';
+      if (currentMonth.substring(0, 7) !== dateString.substring(0, 7)) {
+        setCurrentMonth(targetMonth);
+      }
       AsyncStorage.setItem('calendar_last_date', dateString);
     }
   };
@@ -102,10 +115,10 @@ export default function CalendarMonthView() {
     d.setMonth(d.getMonth() + (direction === 'next' ? 1 : -1));
     
     const nextMonthISO = d.toISOString().split('T')[0];
-    const nextMonthYear = nextMonthISO.substring(0, 7);
+    const nextMonthYearMonth = nextMonthISO.substring(0, 7);
     const todayYearMonth = systemToday.substring(0, 7);
 
-    let targetSelection = nextMonthYear === todayYearMonth ? systemToday : `${nextMonthYear}-01`;
+    let targetSelection = nextMonthYearMonth === todayYearMonth ? systemToday : `${nextMonthYearMonth}-01`;
 
     setCurrentMonth(nextMonthISO);
     setSelectedDate(targetSelection);

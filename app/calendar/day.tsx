@@ -9,7 +9,6 @@ import { shouldShowRoutineOnDate } from '../../utils/routineEngine';
 
 const { width: SCREEN_WIDTH } = Dimensions.get('window');
 
-// Mock data and interfaces consistent with Month view
 interface Routine {
   id: string;
   name: string;
@@ -21,6 +20,12 @@ interface Routine {
   maxOccurrences?: number;
   instanceIndex?: number;
   isInstanceEnabled?: boolean;
+}
+
+interface RoutineException {
+  routineId: string;
+  date: string; 
+  instanceIndex: number;
 }
 
 const MOCK_ROUTINES: Routine[] = [
@@ -50,7 +55,6 @@ export default function DayView() {
   const { colors, styles, getPressedStyle } = useThemedStyles();
   const isWeb = Platform.OS === 'web';
 
-  // Localized Today logic from Month view
   const systemToday = useMemo(() => {
     const now = new Date();
     const offset = now.getTimezoneOffset() * 60000;
@@ -58,20 +62,49 @@ export default function DayView() {
   }, []);
 
   const [selectedDate, setSelectedDate] = useState(systemToday);
+  const [exceptions, setExceptions] = useState<RoutineException[]>([]);
   let touchX = 0;
 
+  // --- HYDRATION ---
   useEffect(() => {
     const hydrate = async () => {
-      const saved = await AsyncStorage.getItem('calendar_last_date');
-      if (saved) setSelectedDate(saved);
+      try {
+        const savedDate = await AsyncStorage.getItem('calendar_last_date');
+        const savedEx = await AsyncStorage.getItem('routine_exceptions');
+        if (savedDate) setSelectedDate(savedDate);
+        if (savedEx) setExceptions(JSON.parse(savedEx));
+      } catch (e) {
+        console.error("Hydration failed", e);
+      }
     };
     hydrate();
   }, []);
 
+  // --- PERSISTENCE WRAPPERS ---
+  const updateDate = async (date: string) => {
+    setSelectedDate(date);
+    await AsyncStorage.setItem('calendar_last_date', date);
+  };
+
+  const handleToggleInstance = async (item: Routine) => {
+    const rId = item.id.split('-v')[0];
+    const idx = item.instanceIndex ?? 0;
+    const existingIdx = exceptions.findIndex(ex => ex.routineId === rId && ex.date === selectedDate && ex.instanceIndex === idx);
+    
+    let newExceptions;
+    if (existingIdx > -1) {
+      newExceptions = exceptions.filter((_, i) => i !== existingIdx);
+    } else {
+      newExceptions = [...exceptions, { routineId: rId, date: selectedDate, instanceIndex: idx }];
+    }
+    setExceptions(newExceptions);
+    await AsyncStorage.setItem('routine_exceptions', JSON.stringify(newExceptions));
+  };
+
   // --- WEEK STRIP LOGIC ---
   const weekDays = useMemo(() => {
     const current = new Date(selectedDate + 'T00:00:00');
-    const dayOfWeek = current.getDay(); // 0 (Sun) to 6 (Sat)
+    const dayOfWeek = current.getDay(); 
     const days = [];
 
     for (let i = 0; i < 7; i++) {
@@ -92,9 +125,7 @@ export default function DayView() {
   const changeWeek = (direction: 'next' | 'prev') => {
     const current = new Date(selectedDate + 'T00:00:00');
     current.setDate(current.getDate() + (direction === 'next' ? 7 : -7));
-    const nextDate = current.toISOString().split('T')[0];
-    setSelectedDate(nextDate);
-    AsyncStorage.setItem('calendar_last_date', nextDate);
+    updateDate(current.toISOString().split('T')[0]);
   };
 
   const onTouchStart = (e: any) => { touchX = e.nativeEvent.pageX; };
@@ -115,18 +146,30 @@ export default function DayView() {
         const isMultiHit = routine.frequencyHours && routine.maxOccurrences;
         const count = isMultiHit ? routine.maxOccurrences! : 1;
         for (let i = 0; i < count; i++) {
+          const hasException = exceptions.some(ex => 
+            ex.routineId === routine.id && ex.date === selectedDate && ex.instanceIndex === i
+          );
+
           const start = new Date(routine.startTime);
           const end = new Date(routine.endTime);
           if (isMultiHit) {
             start.setHours(routine.startTime.getHours() + (i * routine.frequencyHours!));
             end.setHours(routine.endTime.getHours() + (i * routine.frequencyHours!));
           }
-          expandedList.push({ ...routine, id: isMultiHit ? `${routine.id}-v${i}` : routine.id, startTime: start, endTime: end, isInstanceEnabled: true });
+
+          expandedList.push({ 
+            ...routine, 
+            id: isMultiHit ? `${routine.id}-v${i}` : routine.id, 
+            startTime: start, 
+            endTime: end, 
+            instanceIndex: i,
+            isInstanceEnabled: routine.isEnabled && !hasException 
+          });
         }
       }
     });
     return expandedList.sort((a, b) => a.startTime.getTime() - b.startTime.getTime());
-  }, [selectedDate]);
+  }, [selectedDate, exceptions]);
 
   const { monthName, fullDisplayDate } = useMemo(() => {
     const d = new Date(selectedDate + 'T00:00:00');
@@ -136,13 +179,18 @@ export default function DayView() {
     };
   }, [selectedDate]);
 
+  const handleSafeBack = () => {
+    if (router.canGoBack()) router.back();
+    else router.replace('/calendar');
+  };
+
   const formatTime = (date: Date) => date.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit', hour12: true });
 
   return (
     <View style={[styles.setupContainer, { flex: 1, paddingTop: insets.top }]}>
       {/* Header */}
       <View style={styles.calendarHeaderRow}>
-        <Pressable onPress={() => router.back()} style={({ pressed }) => [getPressedStyle(pressed), styles.glassPill]}>
+        <Pressable onPress={handleSafeBack} style={({ pressed }) => [getPressedStyle(pressed), styles.glassPill]}>
           <Ionicons name="chevron-back" size={20} color={colors.text} />
           <Text style={{ color: colors.text, fontSize: 17 }}>{monthName}</Text>
         </Pressable>
@@ -165,7 +213,7 @@ export default function DayView() {
         
         <View style={localStyles.weekStrip}>
           {weekDays.map((day) => (
-            <Pressable key={day.date} onPress={() => setSelectedDate(day.date)} style={localStyles.dayItem}>
+            <Pressable key={day.date} onPress={() => updateDate(day.date)} style={localStyles.dayItem}>
               <Text style={[localStyles.dayLabel, { color: colors.mutedText }]}>{day.dayLabel}</Text>
               <View style={[
                 localStyles.dayCircle,
@@ -202,15 +250,20 @@ export default function DayView() {
         contentContainerStyle={{ paddingHorizontal: 16, paddingTop: 10 }}
         renderItem={({ item }) => (
           <View style={[styles.insetGroup, { marginBottom: 12, padding: 16, flexDirection: 'row', alignItems: 'center' }]}>
-            <View style={{ flex: 1 }}>
+            <View style={{ flex: 1, opacity: item.isInstanceEnabled ? 1 : 0.4 }}>
               <Text style={{ color: colors.text, fontSize: 17, fontWeight: '600' }}>{item.name}</Text>
               <Text style={{ color: colors.mutedText, fontSize: 13, marginTop: 2 }}>{item.repeat}</Text>
             </View>
-            <View style={{ alignItems: 'flex-end', marginRight: 12 }}>
+            <View style={{ alignItems: 'flex-end', marginRight: 12, opacity: item.isInstanceEnabled ? 1 : 0.4 }}>
               <Text style={{ color: colors.text, fontSize: 15, fontWeight: '500' }}>{formatTime(item.startTime)}</Text>
               <Text style={{ color: colors.mutedText, fontSize: 12 }}>to {formatTime(item.endTime)}</Text>
             </View>
-            <Switch value={item.isInstanceEnabled} trackColor={{ false: colors.glassBorder, true: colors.success }} thumbColor={'#FFF'} />
+            <Switch 
+              value={item.isInstanceEnabled} 
+              onValueChange={() => handleToggleInstance(item)}
+              trackColor={{ false: colors.glassBorder, true: colors.success }} 
+              thumbColor={'#FFF'} 
+            />
           </View>
         )}
         ListEmptyComponent={<Text style={{ color: colors.mutedText, textAlign: 'center', marginTop: 40 }}>No Routines Scheduled</Text>}
@@ -218,7 +271,7 @@ export default function DayView() {
 
       {/* Footer */}
       <View style={[styles.calendarFooter, { paddingBottom: Math.max(insets.bottom, 20) }]}>
-        <Pressable onPress={() => setSelectedDate(systemToday)} style={styles.glassPill}>
+        <Pressable onPress={() => updateDate(systemToday)} style={styles.glassPill}>
           <Text style={{ color: colors.text, fontSize: 17, paddingHorizontal: 20 }}>Today</Text>
         </Pressable>
         <Pressable style={[styles.glassPill, { flexDirection: 'row', gap: 8, paddingHorizontal: 15 }]}>
@@ -231,50 +284,13 @@ export default function DayView() {
 }
 
 const localStyles = StyleSheet.create({
-  weekContainer: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    paddingVertical: 10,
-    paddingHorizontal: 15,
-  },
-  weekStrip: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    flex: 1,
-  },
-  dayItem: {
-    alignItems: 'center',
-    width: (SCREEN_WIDTH - 80) / 7,
-  },
-  dayLabel: {
-    fontSize: 11,
-    fontWeight: '600',
-    marginBottom: 6,
-    textTransform: 'uppercase',
-  },
-  dayCircle: {
-    width: 32,
-    height: 32,
-    borderRadius: 16,
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  dayNum: {
-    fontSize: 17,
-    fontWeight: '400',
-  },
-  dateLabelContainer: {
-    marginTop: 15,
-    paddingHorizontal: 16,
-  },
-  dateText: {
-    fontSize: 15,
-    fontWeight: '600',
-    marginBottom: 8,
-  },
-  nativeLine: {
-    height: 1,
-    width: '100%',
-  }
+  weekContainer: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', paddingVertical: 10, paddingHorizontal: 15 },
+  weekStrip: { flexDirection: 'row', justifyContent: 'space-between', flex: 1 },
+  dayItem: { alignItems: 'center', width: (SCREEN_WIDTH - 80) / 7 },
+  dayLabel: { fontSize: 11, fontWeight: '600', marginBottom: 6, textTransform: 'uppercase' },
+  dayCircle: { width: 32, height: 32, borderRadius: 16, justifyContent: 'center', alignItems: 'center' },
+  dayNum: { fontSize: 17, fontWeight: '400' },
+  dateLabelContainer: { marginTop: 15, paddingHorizontal: 16 },
+  dateText: { fontSize: 15, fontWeight: '600', marginBottom: 8 },
+  nativeLine: { height: 1, width: '100%' }
 });
