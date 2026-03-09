@@ -8,7 +8,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { shouldShowRoutineOnDate } from '../../utils/routineEngine';
 
-const { width } = Dimensions.get('window');
+const { width: SCREEN_WIDTH } = Dimensions.get('window');
 
 interface Routine {
   id: string;
@@ -59,7 +59,7 @@ export default function CalendarMonthView() {
   const insets = useSafeAreaInsets();
   const { colors, styles, getPressedStyle } = useThemedStyles();
   
-  // FIXED: Adjusted for Local Timezone offset to prevent "Next Day" bug at night
+  // DYNAMIC LOCAL DATE: Respects local timezone offset
   const systemToday = useMemo(() => {
     const now = new Date();
     const offset = now.getTimezoneOffset() * 60000;
@@ -104,7 +104,6 @@ export default function CalendarMonthView() {
 
   const markedDates = useMemo(() => {
     const isTodaySelected = selectedDate === systemToday;
-    
     return {
       [systemToday]: {
         selected: isTodaySelected,
@@ -194,7 +193,9 @@ export default function CalendarMonthView() {
 
       {!isWeb && (
         <View style={localStyles.iosHeaderContainer}>
-          <Text style={[styles.largeMonthLabel, { color: colors.text }]}>{monthName}</Text>
+          <Text style={[styles.largeMonthLabel, { color: colors.text, textAlign: 'left' }]}>
+            {monthName}
+          </Text>
         </View>
       )}
 
@@ -280,7 +281,7 @@ export default function CalendarMonthView() {
 
 const localStyles = StyleSheet.create({
   iosHeaderContainer: {
-    paddingHorizontal: 20,
+    paddingHorizontal: 16,
     marginTop: 10,
     marginBottom: 5,
   },
@@ -288,8 +289,11 @@ const localStyles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    width: '100%',
+    // Using a calculated fixed width to bypass internal flex container limits
+    width: SCREEN_WIDTH - 40, 
+    marginHorizontal: -15, // Negative margin to force outward against containers
     paddingHorizontal: 10,
+    marginVertical: 10,
   },
   webMonthLabel: {
     fontSize: 18,
