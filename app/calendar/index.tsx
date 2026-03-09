@@ -1,12 +1,14 @@
 import React, { useState, useMemo, useEffect } from 'react';
-import { View, Text, Pressable, Platform, FlatList, Switch, StyleSheet } from 'react-native';
-import { Calendar } from 'react-native-calendars';
+import { View, Text, Pressable, Platform, FlatList, Switch, StyleSheet, Dimensions } from 'react-native';
+import { Calendar } from 'react-native-calendars'; 
 import { useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { useThemedStyles } from '../../hooks/useThemedStyles';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { shouldShowRoutineOnDate } from '../../utils/routineEngine';
+
+const { width } = Dimensions.get('window');
 
 interface Routine {
   id: string;
@@ -56,7 +58,9 @@ export default function CalendarMonthView() {
   const router = useRouter();
   const insets = useSafeAreaInsets();
   const { colors, styles, getPressedStyle } = useThemedStyles();
-  const systemToday = new Date().toISOString().split('T')[0];
+  
+  // Explicitly defining today's date for this drill-down
+  const systemToday = '2026-03-08';
   
   const [currentMonth, setCurrentMonth] = useState(systemToday);
   const [selectedDate, setSelectedDate] = useState(systemToday);
@@ -64,46 +68,7 @@ export default function CalendarMonthView() {
   const [exceptions, setExceptions] = useState(STATIC_EXCEPTIONS);
 
   const isWeb = Platform.OS === 'web';
-
-  const displayRoutines = useMemo(() => {
-    const [y, m, d] = selectedDate.split('-').map(Number);
-    const targetDate = new Date(y, m - 1, d);
-    const expandedList: Routine[] = [];
-
-    routines.forEach(routine => {
-      if (shouldShowRoutineOnDate(routine, targetDate)) {
-        const isMultiHit = routine.frequencyHours && routine.maxOccurrences;
-        const count = isMultiHit ? routine.maxOccurrences! : 1;
-
-        for (let i = 0; i < count; i++) {
-          const hasException = exceptions.some(ex => 
-            ex.routineId === routine.id && 
-            ex.date === selectedDate && 
-            ex.instanceIndex === i
-          );
-
-          const start = new Date(routine.startTime);
-          const end = new Date(routine.endTime);
-          
-          if (isMultiHit) {
-            start.setHours(routine.startTime.getHours() + (i * routine.frequencyHours!));
-            end.setHours(routine.endTime.getHours() + (i * routine.frequencyHours!));
-          }
-
-          expandedList.push({
-            ...routine,
-            id: isMultiHit ? `${routine.id}-v${i}` : routine.id,
-            startTime: start,
-            endTime: end,
-            instanceIndex: i,
-            isInstanceEnabled: routine.isEnabled && !hasException 
-          });
-        }
-      }
-    });
-
-    return expandedList.sort((a, b) => a.startTime.getTime() - b.startTime.getTime());
-  }, [selectedDate, routines, exceptions]);
+  let touchY = 0; 
 
   useEffect(() => {
     const hydrate = async () => {
@@ -116,6 +81,76 @@ export default function CalendarMonthView() {
     };
     hydrate();
   }, []);
+
+  const handleMonthChange = (direction: 'next' | 'prev') => {
+    const d = new Date(currentMonth + 'T00:00:00');
+    d.setMonth(d.getMonth() + (direction === 'next' ? 1 : -1));
+    const nextMonthStr = d.toISOString().split('T')[0];
+    setCurrentMonth(nextMonthStr);
+    AsyncStorage.setItem('calendar_last_date', nextMonthStr);
+  };
+
+  const onTouchStart = (e: any) => { touchY = e.nativeEvent.pageY; };
+  const onTouchEnd = (e: any) => {
+    if (isWeb) return;
+    const distance = touchY - e.nativeEvent.pageY;
+    if (distance > 50) handleMonthChange('next'); 
+    if (distance < -50) handleMonthChange('prev'); 
+  };
+
+  // --- STRICT DYNAMIC MARKED DATES ---
+  const markedDates = useMemo(() => {
+    const isTodaySelected = selectedDate === systemToday;
+    
+    return {
+      // Logic for the actual current date (Today)
+      [systemToday]: {
+        selected: isTodaySelected, // Only a circle if actually selected
+        selectedColor: colors.error, // Red circle
+        selectedTextColor: '#FFFFFF',
+        textColor: colors.error, // Always red text if not selected
+      },
+      // Logic for manual selection
+      [selectedDate]: {
+        selected: true,
+        selectedColor: isTodaySelected ? colors.error : colors.text, // Red if today, White if other
+        selectedTextColor: isTodaySelected ? '#FFFFFF' : colors.background,
+      }
+    };
+  }, [selectedDate, systemToday, colors]);
+
+  const displayRoutines = useMemo(() => {
+    const [y, m, d] = selectedDate.split('-').map(Number);
+    const targetDate = new Date(y, m - 1, d);
+    const expandedList: Routine[] = [];
+
+    routines.forEach(routine => {
+      if (shouldShowRoutineOnDate(routine, targetDate)) {
+        const isMultiHit = routine.frequencyHours && routine.maxOccurrences;
+        const count = isMultiHit ? routine.maxOccurrences! : 1;
+        for (let i = 0; i < count; i++) {
+          const hasException = exceptions.some(ex => 
+            ex.routineId === routine.id && ex.date === selectedDate && ex.instanceIndex === i
+          );
+          const start = new Date(routine.startTime);
+          const end = new Date(routine.endTime);
+          if (isMultiHit) {
+            start.setHours(routine.startTime.getHours() + (i * routine.frequencyHours!));
+            end.setHours(routine.endTime.getHours() + (i * routine.frequencyHours!));
+          }
+          expandedList.push({
+            ...routine,
+            id: isMultiHit ? `${routine.id}-v${i}` : routine.id,
+            startTime: start,
+            endTime: end,
+            instanceIndex: i,
+            isInstanceEnabled: routine.isEnabled && !hasException 
+          });
+        }
+      }
+    });
+    return expandedList.sort((a, b) => a.startTime.getTime() - b.startTime.getTime());
+  }, [selectedDate, routines, exceptions]);
 
   const { monthName, year } = useMemo(() => {
     const [y, m, d] = currentMonth.split('-').map(Number);
@@ -134,23 +169,17 @@ export default function CalendarMonthView() {
     }
   };
 
-  const goToYear = async () => {
-    await AsyncStorage.setItem('calendar_last_date', currentMonth);
-    await AsyncStorage.setItem('calendar_zoom_level', 'year');
-    router.push('/calendar/year');
-  };
-
   const formatTime = (date: Date) => date.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit', hour12: true });
 
   return (
     <View style={[styles.setupContainer, { flex: 1, paddingTop: insets.top }]}>
       <View style={styles.calendarHeaderRow}>
-        <Pressable onPress={goToYear} style={({ pressed }) => [getPressedStyle(pressed), styles.glassPill]}>
+        <Pressable onPress={() => router.push('/calendar/year')} style={({ pressed }) => [getPressedStyle(pressed), styles.glassPill]}>
           <Ionicons name="chevron-back" size={20} color={colors.text} />
           <Text style={{ color: colors.text, fontSize: 17 }}>{year}</Text>
         </Pressable>
         <View style={styles.glassPill}>
-          <Pressable onPress={() => router.replace('/settings')} style={({ pressed }) => getPressedStyle(pressed)}>
+          <Pressable onPress={() => router.replace('/settings')} style={getPressedStyle}>
             <Ionicons name="settings-outline" size={22} color={colors.text} />
           </Pressable>
           <View style={styles.pillDivider} />
@@ -160,61 +189,43 @@ export default function CalendarMonthView() {
         </View>
       </View>
 
-      <View style={{ paddingHorizontal: 5 }}>
+      {/* iOS Label: Standard Large Month Label, Left Aligned */}
+      {!isWeb && (
+        <View style={localStyles.iosHeaderContainer}>
+          <Text style={[styles.largeMonthLabel, { color: colors.text }]}>{monthName}</Text>
+        </View>
+      )}
+
+      <View onTouchStart={onTouchStart} onTouchEnd={onTouchEnd} style={{ paddingHorizontal: 5 }}>
         <Calendar
           key={`${currentMonth}-${colors.isDark}`}
           current={currentMonth}
-          enableSwipeMonths={true}
           hideArrows={true}
-          onMonthChange={(m) => {
-            setCurrentMonth(m.dateString);
-            AsyncStorage.setItem('calendar_last_date', m.dateString);
-          }}
+          renderHeader={() => (
+            isWeb ? (
+              <View style={localStyles.webHeaderJustified}>
+                <Pressable onPress={() => handleMonthChange('prev')}>
+                  <Ionicons name="chevron-back" size={20} color={colors.text} />
+                </Pressable>
+                <Text style={[localStyles.webMonthLabel, { color: colors.text }]}>{monthName}</Text>
+                <Pressable onPress={() => handleMonthChange('next')}>
+                  <Ionicons name="chevron-forward" size={20} color={colors.text} />
+                </Pressable>
+              </View>
+            ) : null
+          )}
           onDayPress={(day) => {
             setSelectedDate(day.dateString);
             AsyncStorage.setItem('calendar_last_date', day.dateString);
           }}
-          markedDates={{ [selectedDate]: { selected: true, selectedColor: colors.text, selectedTextColor: colors.background } }}
-          
-          renderHeader={() => (
-            <View style={localStyles.customHeaderContainer}>
-              {isWeb && (
-                <Pressable onPress={() => {
-                  const d = new Date(currentMonth);
-                  d.setMonth(d.getMonth() - 1);
-                  setCurrentMonth(d.toISOString().split('T')[0]);
-                }}>
-                  <Ionicons name="chevron-back" size={24} color={colors.text} />
-                </Pressable>
-              )}
-              
-              <Text style={[styles.largeMonthLabel, { color: colors.text, marginHorizontal: 20, fontSize: isWeb ? 32 : 24 }]}>
-                {monthName} {isWeb ? '' : year}
-              </Text>
-
-              {isWeb && (
-                <Pressable onPress={() => {
-                  const d = new Date(currentMonth);
-                  d.setMonth(d.getMonth() + 1);
-                  setCurrentMonth(d.toISOString().split('T')[0]);
-                }}>
-                  <Ionicons name="chevron-forward" size={24} color={colors.text} />
-                </Pressable>
-              )}
-            </View>
-          )}
-
+          markedDates={markedDates}
           theme={{
             calendarBackground: 'transparent',
             dayTextColor: colors.text,
-            todayTextColor: colors.error,
-            monthTextColor: 'transparent',
+            todayTextColor: colors.error, // Red text for today
             textSectionTitleColor: colors.mutedText,
-            selectedDayBackgroundColor: colors.text,
+            selectedDayBackgroundColor: colors.text, 
             selectedDayTextColor: colors.background,
-            'stylesheet.calendar.header': {
-              header: { flexDirection: 'row', justifyContent: 'center', marginTop: 10, alignItems: 'center' }
-            }
           }}
         />
       </View>
@@ -246,7 +257,14 @@ export default function CalendarMonthView() {
       </View>
 
       <View style={[styles.calendarFooter, { paddingBottom: Math.max(insets.bottom, 20) }]}>
-        <Pressable onPress={() => { setSelectedDate(systemToday); setCurrentMonth(systemToday); }} style={styles.glassPill}>
+        <Pressable 
+          onPress={() => { 
+            setSelectedDate(systemToday); 
+            setCurrentMonth(systemToday); 
+            AsyncStorage.setItem('calendar_last_date', systemToday); 
+          }} 
+          style={styles.glassPill}
+        >
           <Text style={{ color: colors.text, fontSize: 17, paddingHorizontal: 20 }}>Today</Text>
         </Pressable>
         <Pressable onPress={() => router.push('/routines')} style={[styles.glassPill, { flexDirection: 'row', gap: 8, paddingHorizontal: 15 }]}>
@@ -259,10 +277,20 @@ export default function CalendarMonthView() {
 }
 
 const localStyles = StyleSheet.create({
-  customHeaderContainer: {
+  iosHeaderContainer: {
+    paddingHorizontal: 20,
+    marginTop: 10,
+    marginBottom: 5,
+  },
+  webHeaderJustified: {
     flexDirection: 'row',
     alignItems: 'center',
-    justifyContent: 'center',
+    justifyContent: 'space-between', // Spans boundaries
     width: '100%',
+    paddingHorizontal: 10,
+  },
+  webMonthLabel: {
+    fontSize: 18,
+    fontWeight: '700',
   }
 });
