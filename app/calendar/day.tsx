@@ -1,6 +1,6 @@
-import React, { useState, useMemo, useEffect } from 'react';
+import React, { useState, useMemo, useEffect, useCallback } from 'react';
 import { View, Text, Pressable, Platform, FlatList, Switch, StyleSheet, Dimensions } from 'react-native';
-import { useRouter } from 'expo-router';
+import { useRouter, useFocusEffect } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { useThemedStyles } from '../../hooks/useThemedStyles';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -55,33 +55,42 @@ export default function DayView() {
   const { colors, styles, getPressedStyle } = useThemedStyles();
   const isWeb = Platform.OS === 'web';
 
-  const systemToday = useMemo(() => {
+  // --- REFRESH LOGIC (Active Approach) ---
+  const getLocalTodayString = () => {
     const now = new Date();
     const offset = now.getTimezoneOffset() * 60000;
     return new Date(now.getTime() - offset).toISOString().split('T')[0];
-  }, []);
+  };
 
+  const [systemToday, setSystemToday] = useState(getLocalTodayString());
   const [selectedDate, setSelectedDate] = useState(systemToday);
   const [exceptions, setExceptions] = useState<RoutineException[]>([]);
   let touchX = 0;
 
-  // --- HYDRATION ---
-  useEffect(() => {
-    const hydrate = async () => {
-      try {
-        const savedDate = await AsyncStorage.getItem('calendar_last_date');
-        const savedEx = await AsyncStorage.getItem('routine_exceptions');
-        if (savedDate) setSelectedDate(savedDate);
-        if (savedEx) setExceptions(JSON.parse(savedEx));
-      } catch (e) {
-        console.error("Hydration failed", e);
-      }
-    };
-    hydrate();
-  }, []);
+  // --- SYNC ON FOCUS (Route Changes) ---
+  useFocusEffect(
+    useCallback(() => {
+      const freshToday = getLocalTodayString();
+      setSystemToday(freshToday);
+
+      const hydrate = async () => {
+        try {
+          const savedDate = await AsyncStorage.getItem('calendar_last_date');
+          const savedEx = await AsyncStorage.getItem('routine_exceptions');
+          if (savedDate) setSelectedDate(savedDate);
+          if (savedEx) setExceptions(JSON.parse(savedEx));
+        } catch (e) {
+          console.error("Hydration failed", e);
+        }
+      };
+      hydrate();
+    }, [])
+  );
 
   // --- PERSISTENCE WRAPPERS ---
   const updateDate = async (date: string) => {
+    const freshToday = getLocalTodayString();
+    setSystemToday(freshToday); // Refresh system clock on date change
     setSelectedDate(date);
     await AsyncStorage.setItem('calendar_last_date', date);
   };
@@ -271,7 +280,13 @@ export default function DayView() {
 
       {/* Footer */}
       <View style={[styles.calendarFooter, { paddingBottom: Math.max(insets.bottom, 20) }]}>
-        <Pressable onPress={() => updateDate(systemToday)} style={styles.glassPill}>
+        <Pressable 
+          onPress={() => {
+            const freshToday = getLocalTodayString();
+            updateDate(freshToday); // Active check on Today click
+          }} 
+          style={styles.glassPill}
+        >
           <Text style={{ color: colors.text, fontSize: 17, paddingHorizontal: 20 }}>Today</Text>
         </Pressable>
         <Pressable style={[styles.glassPill, { flexDirection: 'row', gap: 8, paddingHorizontal: 15 }]}>

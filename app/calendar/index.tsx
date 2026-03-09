@@ -58,29 +58,35 @@ export default function CalendarMonthView() {
   const router = useRouter();
   const insets = useSafeAreaInsets();
   const { colors, styles, getPressedStyle } = useThemedStyles();
-  
-  const systemToday = useMemo(() => {
+  const isWeb = Platform.OS === 'web';
+
+  // --- REFRESH LOGIC (The Active Approach) ---
+  const getLocalTodayString = () => {
     const now = new Date();
     const offset = now.getTimezoneOffset() * 60000;
+    // Returns current system date in YYYY-MM-DD format based on local time
     return new Date(now.getTime() - offset).toISOString().split('T')[0];
-  }, []);
+  };
   
+  const [systemToday, setSystemToday] = useState(getLocalTodayString());
   const [currentMonth, setCurrentMonth] = useState(systemToday);
   const [selectedDate, setSelectedDate] = useState(systemToday);
   const [routines, setRoutines] = useState(MOCK_ROUTINES);
   const [exceptions, setExceptions] = useState(STATIC_EXCEPTIONS);
 
-  const isWeb = Platform.OS === 'web';
   let touchY = 0; 
 
-  // --- SYNC ON FOCUS ---
+  // --- SYNC ON FOCUS (Route Changes) ---
   useFocusEffect(
     useCallback(() => {
+      // Re-check local system time whenever this screen is focused
+      const freshToday = getLocalTodayString();
+      setSystemToday(freshToday);
+
       const syncState = async () => {
         const savedDate = await AsyncStorage.getItem('calendar_last_date');
         if (savedDate) {
           setSelectedDate(savedDate);
-          // FIXED: When coming back from Day view, ensure the calendar jumps to that month
           setCurrentMonth(savedDate.substring(0, 7) + '-01');
         }
       };
@@ -95,13 +101,16 @@ export default function CalendarMonthView() {
     hydrate();
   }, []);
 
-  // --- DRILL DOWN & MONTH SYNC LOGIC ---
+  // --- DRILL DOWN & ACTIVE DATE CHECK ---
   const handleDatePress = (dateString: string) => {
+    // Perform an active check of system time on every date interaction
+    const freshToday = getLocalTodayString();
+    setSystemToday(freshToday);
+
     if (selectedDate === dateString) {
       router.push('/calendar/day');
     } else {
       setSelectedDate(dateString);
-      // FIXED: Ensure calendar view follows the selection if it's a different month
       const targetMonth = dateString.substring(0, 7) + '-01';
       if (currentMonth.substring(0, 7) !== dateString.substring(0, 7)) {
         setCurrentMonth(targetMonth);
@@ -116,10 +125,12 @@ export default function CalendarMonthView() {
     
     const nextMonthISO = d.toISOString().split('T')[0];
     const nextMonthYearMonth = nextMonthISO.substring(0, 7);
-    const todayYearMonth = systemToday.substring(0, 7);
+    const freshToday = getLocalTodayString(); // Check time during month swipe
+    const todayYearMonth = freshToday.substring(0, 7);
 
-    let targetSelection = nextMonthYearMonth === todayYearMonth ? systemToday : `${nextMonthYearMonth}-01`;
+    let targetSelection = nextMonthYearMonth === todayYearMonth ? freshToday : `${nextMonthYearMonth}-01`;
 
+    setSystemToday(freshToday);
     setCurrentMonth(nextMonthISO);
     setSelectedDate(targetSelection);
     AsyncStorage.setItem('calendar_last_date', targetSelection);
@@ -232,7 +243,7 @@ export default function CalendarMonthView() {
 
       <View onTouchStart={onTouchStart} onTouchEnd={onTouchEnd} style={{ paddingHorizontal: 5 }}>
         <Calendar
-          key={`${currentMonth}-${colors.isDark}`}
+          key={`${currentMonth}-${colors.isDark}-${systemToday}`} 
           current={currentMonth}
           hideArrows={true}
           renderHeader={() => (
@@ -289,7 +300,10 @@ export default function CalendarMonthView() {
 
       <View style={[styles.calendarFooter, { paddingBottom: Math.max(insets.bottom, 20) }]}>
         <Pressable 
-          onPress={() => handleDatePress(systemToday)} 
+          onPress={() => {
+            const freshToday = getLocalTodayString();
+            handleDatePress(freshToday); // Force system time check on "Today" click
+          }} 
           style={styles.glassPill}
         >
           <Text style={{ color: colors.text, fontSize: 17, paddingHorizontal: 20 }}>Today</Text>

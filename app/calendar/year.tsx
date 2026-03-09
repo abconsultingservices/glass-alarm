@@ -1,6 +1,6 @@
 import React, { useState, useMemo, useEffect, useRef, useCallback, memo } from 'react';
 import { View, Text, Pressable, FlatList, StyleSheet, Dimensions, Platform } from 'react-native';
-import { useRouter } from 'expo-router';
+import { useRouter, useFocusEffect } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { useThemedStyles } from '../../hooks/useThemedStyles';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -9,7 +9,6 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 const { width } = Dimensions.get('window');
 const COLUMN_WIDTH = (width - 48) / 3;
 
-// --- CRITICAL NATIVE DIMENSIONS ---
 const YEAR_LABEL_HEIGHT = 64; 
 const MONTH_HEIGHT = 125; 
 const YEAR_ITEM_HEIGHT = YEAR_LABEL_HEIGHT + (MONTH_HEIGHT * 4) + 20; 
@@ -18,13 +17,16 @@ const START_YEAR = 2020;
 const END_YEAR = 2030;
 const YEARS_DATA = Array.from({ length: END_YEAR - START_YEAR + 1 }, (_, i) => START_YEAR + i);
 
-// Memoized to prevent the "Large List" performance warning
-const MiniMonth = memo(({ year, monthIndex, systemYear, systemMonth, systemDay, colors, onPress }: any) => {
+// --- MEMOIZED MINI MONTH ---
+const MiniMonth = memo(({ year, monthIndex, systemToday, colors, onPress }: any) => {
   const monthDate = new Date(year, monthIndex);
   const monthName = monthDate.toLocaleString('default', { month: 'short' });
   const daysInMonth = new Date(year, monthIndex + 1, 0).getDate();
   const firstDay = new Date(year, monthIndex, 1).getDay();
-  const isCurrentMonth = year === systemYear && monthIndex === systemMonth;
+
+  // Extract system today parts for comparison
+  const [sYear, sMonth, sDay] = systemToday.split('-').map(Number);
+  const isCurrentMonth = year === sYear && monthIndex === (sMonth - 1);
 
   return (
     <Pressable 
@@ -38,7 +40,7 @@ const MiniMonth = memo(({ year, monthIndex, systemYear, systemMonth, systemDay, 
         {Array.from({ length: 42 }).map((_, i) => {
           const dayNum = i - firstDay + 1;
           const isValidDay = dayNum > 0 && dayNum <= daysInMonth;
-          const isToday = isCurrentMonth && dayNum === systemDay;
+          const isToday = isCurrentMonth && dayNum === sDay;
 
           return (
             <View key={i} style={localStyles.dayCell}>
@@ -62,43 +64,48 @@ export default function CalendarYearView() {
   const insets = useSafeAreaInsets();
   const flatListRef = useRef<FlatList>(null);
   const { colors, styles, getPressedStyle } = useThemedStyles();
-  
-  const today = useMemo(() => new Date(), []);
-  const systemYear = today.getFullYear();
-  const systemMonth = today.getMonth();
-  const systemDay = today.getDate();
 
-  // SYNC YEAR EFFECT: Pulls the saved year from the Month/Day view
-  useEffect(() => {
-    const syncYearView = async () => {
-      // Mark as active zoom level
-      await AsyncStorage.setItem('calendar_zoom_level', 'year');
-      
-      const savedDate = await AsyncStorage.getItem('calendar_last_date');
-      let targetYear = systemYear;
+  // --- REFRESH LOGIC (Active Approach) ---
+  const getLocalTodayString = () => {
+    const now = new Date();
+    const offset = now.getTimezoneOffset() * 60000;
+    return new Date(now.getTime() - offset).toISOString().split('T')[0];
+  };
 
-      if (savedDate) {
-        const extractedYear = parseInt(savedDate.split('-')[0]);
-        if (!isNaN(extractedYear)) {
-          targetYear = extractedYear;
+  const [systemToday, setSystemToday] = useState(getLocalTodayString());
+  const currentYearNum = useMemo(() => parseInt(systemToday.split('-')[0]), [systemToday]);
+
+  // --- SYNC ON FOCUS ---
+  useFocusEffect(
+    useCallback(() => {
+      const freshToday = getLocalTodayString();
+      setSystemToday(freshToday);
+
+      const syncYearView = async () => {
+        await AsyncStorage.setItem('calendar_zoom_level', 'year');
+        const savedDate = await AsyncStorage.getItem('calendar_last_date');
+        
+        let targetYear = parseInt(freshToday.split('-')[0]);
+        if (savedDate) {
+          const extractedYear = parseInt(savedDate.split('-')[0]);
+          if (!isNaN(extractedYear)) targetYear = extractedYear;
         }
-      }
 
-      const index = YEARS_DATA.indexOf(targetYear);
-      if (index !== -1) {
-        const timer = setTimeout(() => {
-          flatListRef.current?.scrollToIndex({ 
-            index, 
-            animated: false, 
-            viewPosition: 0 
-          });
-        }, 200);
-        return () => clearTimeout(timer);
-      }
-    };
+        const index = YEARS_DATA.indexOf(targetYear);
+        if (index !== -1) {
+          setTimeout(() => {
+            flatListRef.current?.scrollToIndex({ index, animated: false, viewPosition: 0 });
+          }, 100);
+        }
+      };
+      syncState();
+      syncYearView();
+    }, [])
+  );
 
-    syncYearView();
-  }, [systemYear]);
+  const syncState = async () => {
+     // Placeholder if extra local state sync is needed
+  };
 
   const getItemLayout = useCallback((_: any, index: number) => ({
     length: YEAR_ITEM_HEIGHT,
@@ -107,6 +114,10 @@ export default function CalendarYearView() {
   }), []);
 
   const handleMonthPress = useCallback(async (year: number, monthIndex: number) => {
+    // Check time on interaction
+    const freshToday = getLocalTodayString();
+    setSystemToday(freshToday);
+
     const monthString = `${year}-${(monthIndex + 1).toString().padStart(2, '0')}-01`;
     await AsyncStorage.setItem('calendar_zoom_level', 'month');
     await AsyncStorage.setItem('calendar_last_date', monthString);
@@ -115,7 +126,7 @@ export default function CalendarYearView() {
 
   const renderYearItem = useCallback(({ item: year }: { item: number }) => (
     <View style={[localStyles.yearSection, { height: YEAR_ITEM_HEIGHT }]}>
-      <Text style={[localStyles.yearLabel, { color: year === systemYear ? colors.error : colors.text }]}>
+      <Text style={[localStyles.yearLabel, { color: year === currentYearNum ? colors.error : colors.text }]}>
         {year}
       </Text>
       <View style={localStyles.monthsContainer}>
@@ -124,21 +135,18 @@ export default function CalendarYearView() {
             key={i}
             year={year}
             monthIndex={i}
-            systemYear={systemYear}
-            systemMonth={systemMonth}
-            systemDay={systemDay}
+            systemToday={systemToday}
             colors={colors}
             onPress={handleMonthPress}
           />
         ))}
       </View>
     </View>
-  ), [colors, systemYear, systemMonth, systemDay, handleMonthPress]);
+  ), [colors, systemToday, currentYearNum, handleMonthPress]);
 
   return (
     <View style={[styles.setupContainer, { flex: 1, paddingTop: insets.top }]}>
       
-      {/* Floating Header */}
       <View style={[styles.calendarHeaderRow, localStyles.floatingHeader, { top: insets.top + 10 }]}>
         <View style={styles.glassPill}>
           <Pressable onPress={() => router.replace('/settings')} style={({ pressed }) => getPressedStyle(pressed)}>
@@ -162,13 +170,20 @@ export default function CalendarYearView() {
         removeClippedSubviews={Platform.OS !== 'web'}
         initialNumToRender={2}
         windowSize={3}
+        // Force refresh if system date changes
+        extraData={systemToday}
       />
 
       <View style={[styles.calendarFooter, { paddingBottom: Math.max(insets.bottom, 20) }]}>
         <Pressable 
           onPress={() => {
-            const index = YEARS_DATA.indexOf(systemYear);
-            flatListRef.current?.scrollToIndex({ index, animated: true, viewPosition: 0 });
+            const freshToday = getLocalTodayString();
+            setSystemToday(freshToday);
+            const freshYear = parseInt(freshToday.split('-')[0]);
+            const index = YEARS_DATA.indexOf(freshYear);
+            if (index !== -1) {
+              flatListRef.current?.scrollToIndex({ index, animated: true, viewPosition: 0 });
+            }
           }} 
           style={({ pressed }) => [getPressedStyle(pressed), styles.glassPill, { paddingHorizontal: 22 }]}
         >
