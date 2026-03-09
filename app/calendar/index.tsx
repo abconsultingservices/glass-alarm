@@ -59,7 +59,6 @@ export default function CalendarMonthView() {
   const insets = useSafeAreaInsets();
   const { colors, styles, getPressedStyle } = useThemedStyles();
   
-  // DYNAMIC LOCAL DATE: Respects local timezone offset
   const systemToday = useMemo(() => {
     const now = new Date();
     const offset = now.getTimezoneOffset() * 60000;
@@ -86,12 +85,31 @@ export default function CalendarMonthView() {
     hydrate();
   }, []);
 
+  // --- DRILL DOWN LOGIC ---
+  const handleDatePress = (dateString: string) => {
+    if (selectedDate === dateString) {
+      // If already selected, drill into Day view
+      router.push('/calendar/day');
+    } else {
+      // Otherwise, just select it
+      setSelectedDate(dateString);
+      AsyncStorage.setItem('calendar_last_date', dateString);
+    }
+  };
+
   const handleMonthChange = (direction: 'next' | 'prev') => {
     const d = new Date(currentMonth + 'T00:00:00');
     d.setMonth(d.getMonth() + (direction === 'next' ? 1 : -1));
-    const nextMonthStr = d.toISOString().split('T')[0];
-    setCurrentMonth(nextMonthStr);
-    AsyncStorage.setItem('calendar_last_date', nextMonthStr);
+    
+    const nextMonthISO = d.toISOString().split('T')[0];
+    const nextMonthYear = nextMonthISO.substring(0, 7);
+    const todayYearMonth = systemToday.substring(0, 7);
+
+    let targetSelection = nextMonthYear === todayYearMonth ? systemToday : `${nextMonthYear}-01`;
+
+    setCurrentMonth(nextMonthISO);
+    setSelectedDate(targetSelection);
+    AsyncStorage.setItem('calendar_last_date', targetSelection);
   };
 
   const onTouchStart = (e: any) => { touchY = e.nativeEvent.pageY; };
@@ -217,10 +235,7 @@ export default function CalendarMonthView() {
               </View>
             ) : null
           )}
-          onDayPress={(day) => {
-            setSelectedDate(day.dateString);
-            AsyncStorage.setItem('calendar_last_date', day.dateString);
-          }}
+          onDayPress={(day) => handleDatePress(day.dateString)}
           markedDates={markedDates}
           theme={{
             calendarBackground: 'transparent',
@@ -261,11 +276,7 @@ export default function CalendarMonthView() {
 
       <View style={[styles.calendarFooter, { paddingBottom: Math.max(insets.bottom, 20) }]}>
         <Pressable 
-          onPress={() => { 
-            setSelectedDate(systemToday); 
-            setCurrentMonth(systemToday); 
-            AsyncStorage.setItem('calendar_last_date', systemToday); 
-          }} 
+          onPress={() => handleDatePress(systemToday)} 
           style={styles.glassPill}
         >
           <Text style={{ color: colors.text, fontSize: 17, paddingHorizontal: 20 }}>Today</Text>
@@ -289,9 +300,8 @@ const localStyles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    // Using a calculated fixed width to bypass internal flex container limits
     width: SCREEN_WIDTH - 40, 
-    marginHorizontal: -15, // Negative margin to force outward against containers
+    marginHorizontal: -15, 
     paddingHorizontal: 10,
     marginVertical: 10,
   },
