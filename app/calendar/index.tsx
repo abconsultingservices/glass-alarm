@@ -59,8 +59,12 @@ export default function CalendarMonthView() {
   const insets = useSafeAreaInsets();
   const { colors, styles, getPressedStyle } = useThemedStyles();
   
-  // Explicitly defining today's date for this drill-down
-  const systemToday = '2026-03-08';
+  // FIXED: Adjusted for Local Timezone offset to prevent "Next Day" bug at night
+  const systemToday = useMemo(() => {
+    const now = new Date();
+    const offset = now.getTimezoneOffset() * 60000;
+    return new Date(now.getTime() - offset).toISOString().split('T')[0];
+  }, []);
   
   const [currentMonth, setCurrentMonth] = useState(systemToday);
   const [selectedDate, setSelectedDate] = useState(systemToday);
@@ -98,24 +102,23 @@ export default function CalendarMonthView() {
     if (distance < -50) handleMonthChange('prev'); 
   };
 
-  // --- STRICT DYNAMIC MARKED DATES ---
   const markedDates = useMemo(() => {
     const isTodaySelected = selectedDate === systemToday;
     
     return {
-      // Logic for the actual current date (Today)
       [systemToday]: {
-        selected: isTodaySelected, // Only a circle if actually selected
-        selectedColor: colors.error, // Red circle
+        selected: isTodaySelected,
+        selectedColor: colors.error,
         selectedTextColor: '#FFFFFF',
-        textColor: colors.error, // Always red text if not selected
+        textColor: colors.error,
       },
-      // Logic for manual selection
-      [selectedDate]: {
-        selected: true,
-        selectedColor: isTodaySelected ? colors.error : colors.text, // Red if today, White if other
-        selectedTextColor: isTodaySelected ? '#FFFFFF' : colors.background,
-      }
+      ...(selectedDate !== systemToday && {
+        [selectedDate]: {
+          selected: true,
+          selectedColor: colors.text,
+          selectedTextColor: colors.background,
+        }
+      })
     };
   }, [selectedDate, systemToday, colors]);
 
@@ -189,7 +192,6 @@ export default function CalendarMonthView() {
         </View>
       </View>
 
-      {/* iOS Label: Standard Large Month Label, Left Aligned */}
       {!isWeb && (
         <View style={localStyles.iosHeaderContainer}>
           <Text style={[styles.largeMonthLabel, { color: colors.text }]}>{monthName}</Text>
@@ -222,7 +224,7 @@ export default function CalendarMonthView() {
           theme={{
             calendarBackground: 'transparent',
             dayTextColor: colors.text,
-            todayTextColor: colors.error, // Red text for today
+            todayTextColor: colors.error,
             textSectionTitleColor: colors.mutedText,
             selectedDayBackgroundColor: colors.text, 
             selectedDayTextColor: colors.background,
@@ -285,7 +287,7 @@ const localStyles = StyleSheet.create({
   webHeaderJustified: {
     flexDirection: 'row',
     alignItems: 'center',
-    justifyContent: 'space-between', // Spans boundaries
+    justifyContent: 'space-between',
     width: '100%',
     paddingHorizontal: 10,
   },
