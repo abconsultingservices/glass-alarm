@@ -34,6 +34,7 @@ const RAW_RUNTIME_STATE =
           ["drizzle-orm", "virtual:5a4d87ad09501340425d35384c6b670d4759ea4b094f5178e5ffdb5c2ab4831e2cc978d9a8717c80a2fef04ca970b659f7d6c3b3dddc32b3c36d249362abbe55#npm:0.45.1"],\
           ["expo", "virtual:5a4d87ad09501340425d35384c6b670d4759ea4b094f5178e5ffdb5c2ab4831e2cc978d9a8717c80a2fef04ca970b659f7d6c3b3dddc32b3c36d249362abbe55#npm:55.0.5"],\
           ["expo-build-properties", "virtual:5a4d87ad09501340425d35384c6b670d4759ea4b094f5178e5ffdb5c2ab4831e2cc978d9a8717c80a2fef04ca970b659f7d6c3b3dddc32b3c36d249362abbe55#npm:55.0.9"],\
+          ["expo-crypto", "virtual:5a4d87ad09501340425d35384c6b670d4759ea4b094f5178e5ffdb5c2ab4831e2cc978d9a8717c80a2fef04ca970b659f7d6c3b3dddc32b3c36d249362abbe55#npm:55.0.9"],\
           ["expo-notifications", "virtual:5a4d87ad09501340425d35384c6b670d4759ea4b094f5178e5ffdb5c2ab4831e2cc978d9a8717c80a2fef04ca970b659f7d6c3b3dddc32b3c36d249362abbe55#npm:55.0.11"],\
           ["expo-router", "virtual:5a4d87ad09501340425d35384c6b670d4759ea4b094f5178e5ffdb5c2ab4831e2cc978d9a8717c80a2fef04ca970b659f7d6c3b3dddc32b3c36d249362abbe55#npm:55.0.4"],\
           ["expo-sqlite", "virtual:5a4d87ad09501340425d35384c6b670d4759ea4b094f5178e5ffdb5c2ab4831e2cc978d9a8717c80a2fef04ca970b659f7d6c3b3dddc32b3c36d249362abbe55#npm:55.0.10"],\
@@ -6558,6 +6559,28 @@ const RAW_RUNTIME_STATE =
         "linkType": "HARD"\
       }]\
     ]],\
+    ["expo-crypto", [\
+      ["npm:55.0.9", {\
+        "packageLocation": "./.yarn/unplugged/expo-crypto-virtual-13edcc9f29/node_modules/expo-crypto/",\
+        "packageDependencies": [\
+          ["expo-crypto", "npm:55.0.9"]\
+        ],\
+        "linkType": "SOFT"\
+      }],\
+      ["virtual:5a4d87ad09501340425d35384c6b670d4759ea4b094f5178e5ffdb5c2ab4831e2cc978d9a8717c80a2fef04ca970b659f7d6c3b3dddc32b3c36d249362abbe55#npm:55.0.9", {\
+        "packageLocation": "./.yarn/unplugged/expo-crypto-virtual-13edcc9f29/node_modules/expo-crypto/",\
+        "packageDependencies": [\
+          ["@types/expo", null],\
+          ["expo", "virtual:5a4d87ad09501340425d35384c6b670d4759ea4b094f5178e5ffdb5c2ab4831e2cc978d9a8717c80a2fef04ca970b659f7d6c3b3dddc32b3c36d249362abbe55#npm:55.0.5"],\
+          ["expo-crypto", "virtual:5a4d87ad09501340425d35384c6b670d4759ea4b094f5178e5ffdb5c2ab4831e2cc978d9a8717c80a2fef04ca970b659f7d6c3b3dddc32b3c36d249362abbe55#npm:55.0.9"]\
+        ],\
+        "packagePeers": [\
+          "@types/expo",\
+          "expo"\
+        ],\
+        "linkType": "HARD"\
+      }]\
+    ]],\
     ["expo-file-system", [\
       ["npm:55.0.10", {\
         "packageLocation": "./.yarn/unplugged/expo-file-system-virtual-f277ca4502/node_modules/expo-file-system/",\
@@ -7985,6 +8008,7 @@ const RAW_RUNTIME_STATE =
           ["drizzle-orm", "virtual:5a4d87ad09501340425d35384c6b670d4759ea4b094f5178e5ffdb5c2ab4831e2cc978d9a8717c80a2fef04ca970b659f7d6c3b3dddc32b3c36d249362abbe55#npm:0.45.1"],\
           ["expo", "virtual:5a4d87ad09501340425d35384c6b670d4759ea4b094f5178e5ffdb5c2ab4831e2cc978d9a8717c80a2fef04ca970b659f7d6c3b3dddc32b3c36d249362abbe55#npm:55.0.5"],\
           ["expo-build-properties", "virtual:5a4d87ad09501340425d35384c6b670d4759ea4b094f5178e5ffdb5c2ab4831e2cc978d9a8717c80a2fef04ca970b659f7d6c3b3dddc32b3c36d249362abbe55#npm:55.0.9"],\
+          ["expo-crypto", "virtual:5a4d87ad09501340425d35384c6b670d4759ea4b094f5178e5ffdb5c2ab4831e2cc978d9a8717c80a2fef04ca970b659f7d6c3b3dddc32b3c36d249362abbe55#npm:55.0.9"],\
           ["expo-notifications", "virtual:5a4d87ad09501340425d35384c6b670d4759ea4b094f5178e5ffdb5c2ab4831e2cc978d9a8717c80a2fef04ca970b659f7d6c3b3dddc32b3c36d249362abbe55#npm:55.0.11"],\
           ["expo-router", "virtual:5a4d87ad09501340425d35384c6b670d4759ea4b094f5178e5ffdb5c2ab4831e2cc978d9a8717c80a2fef04ca970b659f7d6c3b3dddc32b3c36d249362abbe55#npm:55.0.4"],\
           ["expo-sqlite", "virtual:5a4d87ad09501340425d35384c6b670d4759ea4b094f5178e5ffdb5c2ab4831e2cc978d9a8717c80a2fef04ca970b659f7d6c3b3dddc32b3c36d249362abbe55#npm:55.0.10"],\
@@ -8661,7 +8685,7 @@ const RAW_RUNTIME_STATE =
           ["nopt", "npm:9.0.0"],\
           ["proc-log", "npm:6.1.0"],\
           ["semver", "npm:7.7.4"],\
-          ["tar", "npm:7.5.10"],\
+          ["tar", "npm:7.5.11"],\
           ["tinyglobby", "npm:0.2.15"],\
           ["which", "npm:6.0.1"]\
         ],\
@@ -10180,14 +10204,14 @@ const RAW_RUNTIME_STATE =
       }]\
     ]],\
     ["tar", [\
-      ["npm:7.5.10", {\
-        "packageLocation": "../../../.yarn/berry/cache/tar-npm-7.5.10-83147ff192-10c0.zip/node_modules/tar/",\
+      ["npm:7.5.11", {\
+        "packageLocation": "../../../.yarn/berry/cache/tar-npm-7.5.11-c176cc1bb0-10c0.zip/node_modules/tar/",\
         "packageDependencies": [\
           ["@isaacs/fs-minipass", "npm:4.0.1"],\
           ["chownr", "npm:3.0.0"],\
           ["minipass", "npm:7.1.3"],\
           ["minizlib", "npm:3.1.0"],\
-          ["tar", "npm:7.5.10"],\
+          ["tar", "npm:7.5.11"],\
           ["yallist", "npm:5.0.0"]\
         ],\
         "linkType": "HARD"\

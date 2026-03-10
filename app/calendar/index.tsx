@@ -29,6 +29,9 @@ export default function CalendarMonthView() {
   const [routines, setRoutines] = useState<Routine[]>([]);
   const [exceptions, setExceptions] = useState<RoutineException[]>([]);
 
+  let touchY = 0; 
+
+  // --- SYNC ON FOCUS ---
   useFocusEffect(
     useCallback(() => {
       const freshToday = getLocalTodayString();
@@ -43,6 +46,7 @@ export default function CalendarMonthView() {
 
         if (savedDate) {
           setSelectedDate(savedDate);
+          // Sync calendar view to the saved month
           setCurrentMonth(savedDate.substring(0, 7) + '-01');
         }
         setRoutines(fetchedRoutines);
@@ -52,8 +56,11 @@ export default function CalendarMonthView() {
     }, [])
   );
 
+  // --- NAVIGATION LOGIC ---
   const handleDatePress = (dateString: string) => {
-    setSystemToday(getLocalTodayString());
+    const freshToday = getLocalTodayString();
+    setSystemToday(freshToday);
+
     if (selectedDate === dateString) {
       router.push('/calendar/day');
     } else {
@@ -66,8 +73,35 @@ export default function CalendarMonthView() {
     }
   };
 
+  const handleMonthChange = (direction: 'next' | 'prev') => {
+    const d = new Date(currentMonth + 'T00:00:00');
+    d.setMonth(d.getMonth() + (direction === 'next' ? 1 : -1));
+    
+    const nextMonthISO = d.toISOString().split('T')[0];
+    const nextMonthYearMonth = nextMonthISO.substring(0, 7);
+    const freshToday = getLocalTodayString(); 
+    const todayYearMonth = freshToday.substring(0, 7);
+
+    // Twist: Select Today if entering current month, otherwise 1st of month
+    let targetSelection = nextMonthYearMonth === todayYearMonth ? freshToday : `${nextMonthYearMonth}-01`;
+
+    setSystemToday(freshToday);
+    setCurrentMonth(nextMonthISO);
+    setSelectedDate(targetSelection);
+    AsyncStorage.setItem('calendar_last_date', targetSelection);
+  };
+
+  const onTouchStart = (e: any) => { touchY = e.nativeEvent.pageY; };
+  const onTouchEnd = (e: any) => {
+    if (isWeb) return;
+    const distance = touchY - e.nativeEvent.pageY;
+    if (distance > 50) handleMonthChange('next'); 
+    if (distance < -50) handleMonthChange('prev'); 
+  };
+
+  // --- DATA INTERACTION ---
   const handleToggleInstance = async (item: Routine) => {
-    const rId = item.id.split('-v')[0];
+    const rId = item.id; // Now using rguid directly from DB
     const idx = item.instanceIndex ?? 0;
     const nextEx = await RoutineService.toggleException(exceptions, rId, selectedDate, idx);
     setExceptions(nextEx);
@@ -111,27 +145,38 @@ export default function CalendarMonthView() {
             start.setHours(routine.startTime.getHours() + (i * routine.frequencyHours!));
             end.setHours(routine.endTime.getHours() + (i * routine.frequencyHours!));
           }
-          expandedList.push({ ...routine, id: isMultiHit ? `${routine.id}-v${i}` : routine.id, startTime: start, endTime: end, instanceIndex: i, isInstanceEnabled: routine.isEnabled && !hasException });
+          expandedList.push({ 
+            ...routine, 
+            id: isMultiHit ? `${routine.id}-v${i}` : routine.id, 
+            startTime: start, 
+            endTime: end, 
+            instanceIndex: i, 
+            isInstanceEnabled: routine.isEnabled && !hasException 
+          });
         }
       }
     });
     return expandedList.sort((a, b) => a.startTime.getTime() - b.startTime.getTime());
   }, [selectedDate, routines, exceptions]);
 
-  const { monthName, year } = useMemo(() => {
+  const { monthName, yearLabel } = useMemo(() => {
     const [y, m, d] = currentMonth.split('-').map(Number);
     const date = new Date(y, m - 1, d || 1);
-    return { monthName: date.toLocaleString('default', { month: 'long' }), year: y };
+    return { 
+      monthName: date.toLocaleString('default', { month: 'long' }), 
+      yearLabel: y 
+    };
   }, [currentMonth]);
 
   const formatTime = (date: Date) => date.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit', hour12: true });
 
   return (
     <View style={[styles.setupContainer, { flex: 1, paddingTop: insets.top }]}>
+      {/* Header */}
       <View style={styles.calendarHeaderRow}>
         <Pressable onPress={() => router.push('/calendar/year')} style={({ pressed }) => [getPressedStyle(pressed), styles.glassPill]}>
           <Ionicons name="chevron-back" size={20} color={colors.text} />
-          <Text style={{ color: colors.text, fontSize: 17 }}>{year}</Text>
+          <Text style={{ color: colors.text, fontSize: 17 }}>{yearLabel}</Text>
         </Pressable>
         <View style={styles.glassPill}>
           <Ionicons name="settings-outline" size={22} color={colors.text} />
@@ -148,11 +193,21 @@ export default function CalendarMonthView() {
         </View>
       )}
 
-      <View style={{ paddingHorizontal: 5 }}>
+      {/* Calendar Strip */}
+      <View onTouchStart={onTouchStart} onTouchEnd={onTouchEnd} style={{ paddingHorizontal: 5 }}>
         <Calendar
           key={`${currentMonth}-${colors.isDark}-${systemToday}`}
           current={currentMonth}
           hideArrows={true}
+          renderHeader={() => (
+            isWeb ? (
+              <View style={localStyles.webHeaderJustified}>
+                <Pressable onPress={() => handleMonthChange('prev')}><Ionicons name="chevron-back" size={20} color={colors.text} /></Pressable>
+                <Text style={[localStyles.webMonthLabel, { color: colors.text }]}>{monthName}</Text>
+                <Pressable onPress={() => handleMonthChange('next')}><Ionicons name="chevron-forward" size={20} color={colors.text} /></Pressable>
+              </View>
+            ) : null
+          )}
           onDayPress={(day) => handleDatePress(day.dateString)}
           markedDates={markedDates}
           theme={{
@@ -166,6 +221,7 @@ export default function CalendarMonthView() {
         />
       </View>
 
+      {/* Routine List */}
       <FlatList
         data={displayRoutines}
         keyExtractor={(item) => item.id}
@@ -190,11 +246,12 @@ export default function CalendarMonthView() {
         ListEmptyComponent={<Text style={{ color: colors.mutedText, textAlign: 'center', marginTop: 20 }}>No Routines</Text>}
       />
 
+      {/* Footer */}
       <View style={[styles.calendarFooter, { paddingBottom: Math.max(insets.bottom, 20) }]}>
         <Pressable onPress={() => handleDatePress(getLocalTodayString())} style={styles.glassPill}>
           <Text style={{ color: colors.text, fontSize: 17, paddingHorizontal: 20 }}>Today</Text>
         </Pressable>
-        <Pressable style={[styles.glassPill, { flexDirection: 'row', gap: 8, paddingHorizontal: 15 }]}>
+        <Pressable onPress={() => router.push('/routines')} style={[styles.glassPill, { flexDirection: 'row', gap: 8, paddingHorizontal: 15 }]}>
           <Ionicons name="calendar-outline" size={20} color={colors.text} />
           <Text style={{ color: colors.text, fontSize: 17 }}>Routines</Text>
         </Pressable>
