@@ -1,4 +1,4 @@
-import React, { useState, useMemo, useEffect, useCallback } from 'react';
+import React, { useState, useMemo, useCallback } from 'react';
 import { View, Text, Pressable, Platform, FlatList, Switch, StyleSheet, Dimensions } from 'react-native';
 import { useRouter, useFocusEffect } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
@@ -6,48 +6,10 @@ import { useThemedStyles } from '../../hooks/useThemedStyles';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { shouldShowRoutineOnDate } from '../../utils/routineEngine';
+// Import shared service and types
+import { RoutineService, Routine, RoutineException } from '../../services/routineService';
 
 const { width: SCREEN_WIDTH } = Dimensions.get('window');
-
-interface Routine {
-  id: string;
-  name: string;
-  repeat: string;
-  startTime: Date;
-  endTime: Date;
-  isEnabled: boolean;
-  frequencyHours?: number;
-  maxOccurrences?: number;
-  instanceIndex?: number;
-  isInstanceEnabled?: boolean;
-}
-
-interface RoutineException {
-  routineId: string;
-  date: string; 
-  instanceIndex: number;
-}
-
-const MOCK_ROUTINES: Routine[] = [
-  {
-    id: '1',
-    name: 'Morning Meditation',
-    repeat: 'Daily',
-    startTime: new Date(2026, 2, 8, 7, 0),
-    endTime: new Date(2026, 2, 8, 7, 30),
-    isEnabled: true,
-  },
-  {
-    id: '2',
-    name: 'Hydration / Water',
-    repeat: 'Daily',
-    startTime: new Date(2026, 2, 8, 9, 0),
-    endTime: new Date(2026, 2, 8, 9, 15),
-    isEnabled: true,
-    frequencyHours: 4,
-    maxOccurrences: 3, 
-  },
-];
 
 export default function DayView() {
   const router = useRouter();
@@ -64,33 +26,40 @@ export default function DayView() {
 
   const [systemToday, setSystemToday] = useState(getLocalTodayString());
   const [selectedDate, setSelectedDate] = useState(systemToday);
+  const [routines, setRoutines] = useState<Routine[]>([]);
   const [exceptions, setExceptions] = useState<RoutineException[]>([]);
   let touchX = 0;
 
   // --- SYNC ON FOCUS (Route Changes) ---
   useFocusEffect(
     useCallback(() => {
+      // Re-check system clock on entry
       const freshToday = getLocalTodayString();
       setSystemToday(freshToday);
 
-      const hydrate = async () => {
+      const syncState = async () => {
         try {
-          const savedDate = await AsyncStorage.getItem('calendar_last_date');
-          const savedEx = await AsyncStorage.getItem('routine_exceptions');
+          const [savedDate, fetchedRoutines, fetchedExceptions] = await Promise.all([
+            AsyncStorage.getItem('calendar_last_date'),
+            RoutineService.getRoutines(),
+            RoutineService.getExceptions()
+          ]);
+          
           if (savedDate) setSelectedDate(savedDate);
-          if (savedEx) setExceptions(JSON.parse(savedEx));
+          setRoutines(fetchedRoutines);
+          setExceptions(fetchedExceptions);
         } catch (e) {
-          console.error("Hydration failed", e);
+          console.error("DayView Sync failed", e);
         }
       };
-      hydrate();
+      syncState();
     }, [])
   );
 
   // --- PERSISTENCE WRAPPERS ---
   const updateDate = async (date: string) => {
     const freshToday = getLocalTodayString();
-    setSystemToday(freshToday); // Refresh system clock on date change
+    setSystemToday(freshToday); 
     setSelectedDate(date);
     await AsyncStorage.setItem('calendar_last_date', date);
   };
@@ -98,16 +67,9 @@ export default function DayView() {
   const handleToggleInstance = async (item: Routine) => {
     const rId = item.id.split('-v')[0];
     const idx = item.instanceIndex ?? 0;
-    const existingIdx = exceptions.findIndex(ex => ex.routineId === rId && ex.date === selectedDate && ex.instanceIndex === idx);
-    
-    let newExceptions;
-    if (existingIdx > -1) {
-      newExceptions = exceptions.filter((_, i) => i !== existingIdx);
-    } else {
-      newExceptions = [...exceptions, { routineId: rId, date: selectedDate, instanceIndex: idx }];
-    }
-    setExceptions(newExceptions);
-    await AsyncStorage.setItem('routine_exceptions', JSON.stringify(newExceptions));
+    // Use the shared service to toggle the exception
+    const nextEx = await RoutineService.toggleException(exceptions, rId, selectedDate, idx);
+    setExceptions(nextEx);
   };
 
   // --- WEEK STRIP LOGIC ---
@@ -150,7 +112,7 @@ export default function DayView() {
     const targetDate = new Date(y, m - 1, d);
     const expandedList: Routine[] = [];
 
-    MOCK_ROUTINES.forEach(routine => {
+    routines.forEach(routine => {
       if (shouldShowRoutineOnDate(routine, targetDate)) {
         const isMultiHit = routine.frequencyHours && routine.maxOccurrences;
         const count = isMultiHit ? routine.maxOccurrences! : 1;
@@ -178,7 +140,7 @@ export default function DayView() {
       }
     });
     return expandedList.sort((a, b) => a.startTime.getTime() - b.startTime.getTime());
-  }, [selectedDate, exceptions]);
+  }, [selectedDate, routines, exceptions]);
 
   const { monthName, fullDisplayDate } = useMemo(() => {
     const d = new Date(selectedDate + 'T00:00:00');
@@ -283,7 +245,7 @@ export default function DayView() {
         <Pressable 
           onPress={() => {
             const freshToday = getLocalTodayString();
-            updateDate(freshToday); // Active check on Today click
+            updateDate(freshToday);
           }} 
           style={styles.glassPill}
         >

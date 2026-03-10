@@ -40,6 +40,10 @@ export const MOCK_ROUTINES: Routine[] = [
   },
 ];
 
+const INITIAL_EXCEPTIONS: RoutineException[] = [
+  { routineId: '2', date: '2026-03-08', instanceIndex: 1 }
+];
+
 const EXCEPTIONS_KEY = 'routine_exceptions';
 
 export const RoutineService = {
@@ -51,7 +55,10 @@ export const RoutineService = {
   // Get all exceptions
   getExceptions: async (): Promise<RoutineException[]> => {
     const saved = await AsyncStorage.getItem(EXCEPTIONS_KEY);
-    return saved ? JSON.parse(saved) : [];
+    if (saved) return JSON.parse(saved);
+    
+    // Fallback to our static exception if storage is empty
+    return INITIAL_EXCEPTIONS;
   },
 
   // Toggle an exception (Bury/Restore)
