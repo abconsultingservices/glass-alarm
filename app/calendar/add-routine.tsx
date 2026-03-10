@@ -1,5 +1,5 @@
 import React, { useState, useRef } from 'react';
-import { View, Text, Pressable, Animated, ScrollView } from 'react-native';
+import { View, Text, Pressable, Animated, ScrollView, Platform } from 'react-native';
 import { useRouter } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { dbService } from '../../services/DatabaseService';
@@ -10,19 +10,18 @@ import { Ionicons } from '@expo/vector-icons';
 
 const ADD_SCHEMA: Section[] = [
     {
-        sectionType: 'pills',
-        label: 'ROUTINE DETAILS',
+        sectionType: 'insetGroup',
         fields: [
-            { key: 'name', label: 'Name', validation: [{ type: 'required', errorMsg: 'Required' }] },
-            { key: 'duration', label: 'Duration (Mins)', config: { keyboardType: 'number-pad' } }
+            { key: 'name', label: 'Title', validation: [{ type: 'required', errorMsg: 'Required' }], config: { placeholder: 'Routine Title' } },
+            { key: 'duration', label: 'Duration (Mins)', config: { keyboardType: 'number-pad', placeholder: '30' } }
         ]
     },
     {
         sectionType: 'insetGroup',
         label: 'SCHEDULE',
-        footer: 'Setting "Max Hits" and "Frequency" creates the multi-bottle water effect.',
+        footer: 'Multi-hit routines (like water) will automatically expand on your calendar.',
         fields: [
-            { key: 'startTime', label: 'Start Time', config: { placeholder: '08:00' } },
+            { key: 'startTime', label: 'Starts', config: { placeholder: '08:00' } },
             { key: 'type', label: 'Repeat', config: { defaultValue: 'daily' } },
             { key: 'frequencyHours', label: 'Every X Hours', config: { keyboardType: 'number-pad' } },
             { key: 'maxOccurrences', label: 'Max Daily Hits', config: { keyboardType: 'number-pad' } }
@@ -37,13 +36,15 @@ export default function AddRoutine() {
 
     const [form, setForm] = useState(() => getInitialFormState(ADD_SCHEMA));
     const [errors, setErrors] = useState(() => getInitialErrorState(ADD_SCHEMA));
+    const [activeTab, setActiveTab] = useState('Routine'); // Routine | Tasks
+
     const shakeAnim = useRef(new Animated.Value(0)).current;
 
     const triggerShake = () => {
         Animated.sequence([
-            Animated.timing(shakeAnim, { toValue: 10, duration: 40, useNativeDriver: true }),
-            Animated.timing(shakeAnim, { toValue: -10, duration: 40, useNativeDriver: true }),
-            Animated.timing(shakeAnim, { toValue: 0, duration: 40, useNativeDriver: true }),
+            Animated.timing(shakeAnim, { toValue: 10, duration: 45, useNativeDriver: true }),
+            Animated.timing(shakeAnim, { toValue: -10, duration: 45, useNativeDriver: true }),
+            Animated.timing(shakeAnim, { toValue: 0, duration: 45, useNativeDriver: true }),
         ]).start();
     };
 
@@ -53,44 +54,74 @@ export default function AddRoutine() {
             return;
         }
 
-        const success = await dbService.createRoutine(form.name, parseInt(form.duration) || 30, {
+        const success = await dbService.createRoutine(form.name, form.duration || '30', {
             startTime: form.startTime,
             type: form.type || 'daily',
-            frequencyHours: parseInt(form.frequencyHours),
-            maxOccurrences: parseInt(form.maxOccurrences)
+            frequencyHours: form.frequencyHours,
+            maxOccurrences: form.maxOccurrences
         });
 
         if (success) router.back();
     };
 
     return (
-        <View style={[styles.container, { paddingTop: insets.top }]}>
-            <View style={[styles.calendarHeaderRow, { paddingHorizontal: 20 }]}>
-                <Pressable onPress={() => router.back()} style={styles.glassPill}>
-                    <Ionicons name="close" size={24} color={colors.text} />
+        <View style={[styles.modalContainer, { backgroundColor: colors.background }]}>
+            {/* --- IOS NATIVE MODAL HEADER --- */}
+            <View style={[styles.modalHeader, { paddingTop: Platform.OS === 'ios' ? 20 : insets.top }]}>
+                <Pressable 
+                    onPress={() => router.back()} 
+                    style={({ pressed }) => [styles.circularButton, getPressedStyle(pressed)]}
+                >
+                    <Ionicons name="close" size={20} color={colors.text} />
                 </Pressable>
-                <Text style={[styles.buttonText, { color: colors.text }]}>New Routine</Text>
-                <View style={{ width: 40 }} /> 
+                
+                <Text style={styles.modalTitle}>New</Text>
+
+                <Pressable 
+                    onPress={handleSave} 
+                    style={({ pressed }) => [styles.circularButton, getPressedStyle(pressed)]}
+                >
+                    <Ionicons name="checkmark" size={20} color={colors.text} />
+                </Pressable>
             </View>
 
-            <ScrollView contentContainerStyle={{ paddingBottom: 100 }}>
-                <GlassFormRenderer 
-                    schema={ADD_SCHEMA}
-                    form={form}
-                    setForm={setForm}
-                    errors={errors}
-                    setErrors={setErrors}
-                />
-            </ScrollView>
+            {/* --- SEGMENTED TABS (Routine | Tasks) --- */}
+            <View style={styles.segmentContainer}>
+                <View style={styles.segmentBackground}>
+                    {['Routine', 'Tasks'].map((tab) => (
+                        <Pressable 
+                            key={tab}
+                            onPress={() => setActiveTab(tab)}
+                            style={[
+                                styles.segmentItem,
+                                activeTab === tab && styles.segmentItemActive
+                            ]}
+                        >
+                            <Text style={[
+                                styles.segmentText,
+                                activeTab === tab && { fontWeight: '600' }
+                            ]}>
+                                {tab}
+                            </Text>
+                        </Pressable>
+                    ))}
+                </View>
+            </View>
 
-            <Animated.View style={[styles.floatingButtonContainer, { bottom: Math.max(insets.bottom, 20), transform: [{ translateX: shakeAnim }] }]}>         
-                <Pressable 
-                    style={({ pressed }) => [styles.button, getPressedStyle(pressed), { backgroundColor: colors.primary }]} 
-                    onPress={handleSave}
-                >
-                    <Text style={styles.buttonText}>Create Routine</Text>
-                </Pressable>
-            </Animated.View>
+            <ScrollView 
+                contentContainerStyle={{ paddingBottom: 100 }}
+                showsVerticalScrollIndicator={false}
+            >
+                <Animated.View style={{ transform: [{ translateX: shakeAnim }] }}>
+                    <GlassFormRenderer 
+                        schema={ADD_SCHEMA}
+                        form={form}
+                        setForm={setForm}
+                        errors={errors}
+                        setErrors={setErrors}
+                    />
+                </Animated.View>
+            </ScrollView>
         </View>
     );
 }

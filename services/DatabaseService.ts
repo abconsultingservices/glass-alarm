@@ -179,6 +179,43 @@ class DatabaseService {
         }
     }
 
+    async createRoutine(name: string, duration: number, schedule: {
+        startTime: string,
+        type: string,
+        frequencyHours?: number,
+        maxOccurrences?: number
+    }) {
+        const uguid = await AsyncStorage.getItem('session_uguid');
+        const gguid = await AsyncStorage.getItem('session_gguid');
+        const rguid = Crypto.randomUUID();
+        const sguid = Crypto.randomUUID();
+
+        if (!uguid || !gguid) return false;
+
+        try {
+            const sqlite = await this.getDb();
+            await sqlite.withTransactionAsync(async () => {
+                // 1. Insert Header
+                await sqlite.runAsync(
+                    `INSERT INTO routines (rguid, uguid, gguid, name, duration, createdBy, lastModifiedBy) 
+                    VALUES (?, ?, ?, ?, ?, ?, ?)`,
+                    [rguid, uguid, gguid, name, duration, uguid, uguid]
+                );
+
+                // 2. Insert Schedule
+                await sqlite.runAsync(
+                    `INSERT INTO routine_schedules (sguid, rguid, type, startDate, startTime, frequencyHours, maxOccurrences, createdBy, lastModifiedBy) 
+                    VALUES (?, ?, ?, CURRENT_DATE, ?, ?, ?, ?, ?)`,
+                    [sguid, rguid, schedule.type, schedule.startTime, schedule.frequencyHours || null, schedule.maxOccurrences || 1, uguid, uguid]
+                );
+            });
+            return true;
+        } catch (e) {
+            console.error("Failed to create routine:", e);
+            return false;
+        }
+    }
+
     async updateSetupData(firstName: string, lastName: string, email: string, groupName: string) {
         let uguid = await AsyncStorage.getItem('temp_setup_uguid');
         let gguid = await AsyncStorage.getItem('temp_setup_gguid');

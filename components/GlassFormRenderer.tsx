@@ -81,6 +81,10 @@ export const GlassFormRenderer = ({ schema, form, setForm, errors, setErrors }: 
                             const isPill = section.sectionType === 'pills';
                             const isReadOnly = section.readOnly || field.mode === 'view' || !!field.destination;
 
+                            const { defaultValue, ...cleanConfig } = field.config || {};
+
+                            console.log(field);
+
                             if (isReadOnly) {
                                 return (
                                     <View key={field.key}>

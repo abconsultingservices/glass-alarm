@@ -100,6 +100,14 @@ export default function RootLayout() {
         <Stack.Screen name="setup" />
         <Stack.Screen name="calendar/index" />
         <Stack.Screen name="calendar/year" />
+        <Stack.Screen 
+          name="calendar/add-routine" 
+          options={{ 
+            presentation: 'modal', // Key for bottom-up slide
+            headerShown: false,
+            gestureEnabled: true,
+          }} 
+        />
         <Stack.Screen name="settings" />
         <Stack.Screen 
           name="edit/[field]" 

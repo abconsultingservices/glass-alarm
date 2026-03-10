@@ -39,10 +39,31 @@ export const fieldRegistry: Record<string, Record<string, RegistryField>> = {
     },
     routines: {
         name: {
-            label: 'Routine Title',
-            dbColumn: 'name',
-            validation: [{ type: 'required', errorMsg: 'Title is required' }],
-            config: { placeholder: 'e.g. Morning Ritual' }
+            label: 'Routine Name',
+            validation: [{ type: 'required', errorMsg: 'Give your routine a name' }],
+            config: { placeholder: 'e.g., Morning Water' }
+        },
+        duration: {
+            label: 'Duration (Mins)',
+            config: { keyboardType: 'number-pad', placeholder: '30' }
+        }
+    },
+    routine_schedules: {
+        startTime: {
+            label: 'Start Time',
+            config: { placeholder: '08:00' } // In a full build, use a TimePicker here
+        },
+        type: {
+            label: 'Repeat',
+            config: { defaultValue: 'daily' }
+        },
+        frequencyHours: {
+            label: 'Every X Hours',
+            config: { keyboardType: 'number-pad', placeholder: '4' }
+        },
+        maxOccurrences: {
+            label: 'Max Times Per Day',
+            config: { keyboardType: 'number-pad', placeholder: '3' }
         }
     }
 };
