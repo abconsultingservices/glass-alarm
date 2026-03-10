@@ -1,24 +1,75 @@
-import { getSqliteDb, ensureSchema } from "../db/client";
-import { SEED_DATA, SCHEMA_V1 } from "./Migrations";
-import * as Crypto from 'expo-crypto'; // Using Expo Crypto for UUIDs in 2026
+import { getSqliteDb } from "../db/client";
+import { SCHEMA_V1 } from "./Migrations";
+import * as Crypto from 'expo-crypto';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 
 class DatabaseService {
-    private async getDb() {
-        // ensureSchema handles the execution of SCHEMA_V1 internally
-        await ensureSchema();
-        return await getSqliteDb();
+    // Singleton promise to prevent multiple initialization triggers
+    private initPromise: Promise<void> | null = null;
+
+    /**
+     * Entry point for database initialization.
+     */
+    async initialize(): Promise<void> {
+        if (this.initPromise) return this.initPromise;
+
+        this.initPromise = (async () => {
+            console.log("DB Service: Starting initialization...");
+            const sqlite = await getSqliteDb();
+            
+            try {
+                // 1. Verify schema - checking for uguid column specifically
+                await sqlite.getFirstAsync<any>('SELECT uguid FROM users LIMIT 1');
+                console.log("DB Service: Schema uguid verified.");
+            } catch (e) {
+                console.log("DB Service: Schema mismatch detected. Wiping for fresh install...");
+                await this.resetApp(); 
+                await sqlite.execAsync(SCHEMA_V1);
+            }
+
+            // 2. Check if we have a seeded user
+            const userCheck = await sqlite.getFirstAsync<any>('SELECT uguid, gguid FROM users LIMIT 1');
+
+            if (!userCheck) {
+                console.log("DB Service: No user found. Seeding...");
+                await this.seedData();
+            } else {
+                // Sync SQLite values to AsyncStorage for Setup screen
+                await AsyncStorage.setItem('temp_setup_uguid', userCheck.uguid);
+                await AsyncStorage.setItem('temp_setup_gguid', userCheck.gguid);
+            }
+            
+            console.log("DB Service: Initialization successful.");
+        })();
+
+        return this.initPromise;
     }
 
     /**
-     * INITIALIZE & SEED
-     * Checks for users and applies placeholder data if empty.
+     * If storage is wiped but DB remains, restore temp GUIDs from the DB.
      */
-    async initialize() {
-        const hasUser = await this.hasUsers();
-        if (!hasUser) {
-            console.log("DB Service: New installation detected. Seeding placeholder data...");
+    async recoverSetupGuids(): Promise<boolean> {
+        try {
+            const sqlite = await getSqliteDb();
+            const result = await sqlite.getFirstAsync<any>('SELECT uguid, gguid FROM users LIMIT 1');
+            
+            if (result && result.uguid) {
+                await AsyncStorage.setItem('temp_setup_uguid', result.uguid);
+                await AsyncStorage.setItem('temp_setup_gguid', result.gguid);
+                return true;
+            }
+            
             await this.seedData();
+            return true;
+        } catch (e) {
+            console.error("Critical Recovery Failure:", e);
+            return false;
         }
+    }
+
+    public async getDb() {
+        await this.initialize();
+        return await getSqliteDb();
     }
 
     async hasUsers(): Promise<boolean> {
@@ -33,28 +84,29 @@ class DatabaseService {
 
     private async seedData() {
         try {
-            const sqlite = await this.getDb();
+            console.log("DB Service: Seeding placeholder data...");
+            const sqlite = await getSqliteDb(); 
             
-            // Disable FKs for circular placeholder creation
             await sqlite.execAsync('PRAGMA foreign_keys = OFF;');
 
             const uguid = Crypto.randomUUID();
             const gguid = Crypto.randomUUID();
 
-            // 1. Create Default Group & User
+            // 1. Create Default Group
             await sqlite.runAsync(
                 `INSERT INTO groups (gguid, owner_uguid, name, createdBy, lastModifiedBy) 
                  VALUES (?, ?, ?, ?, ?)`,
                 [gguid, uguid, 'My Family', uguid, uguid]
             );
 
+            // 2. Create Default User
             await sqlite.runAsync(
                 `INSERT INTO users (uguid, gguid, firstName, lastName, email, role, createdBy, lastModifiedBy) 
                  VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
                 [uguid, gguid, 'New', 'User', 'welcome@localhost.local', 'owner', uguid, uguid]
             );
 
-            // --- MOCK ROUTINE 1: Morning Meditation ---
+            // 3. Mock Routine: Meditation
             const rguid1 = Crypto.randomUUID();
             await sqlite.runAsync(
                 `INSERT INTO routines (rguid, uguid, gguid, name, duration, createdBy, lastModifiedBy) 
@@ -68,7 +120,7 @@ class DatabaseService {
                 [Crypto.randomUUID(), rguid1, uguid, uguid]
             );
 
-            // --- MOCK ROUTINE 2: Hydration (The Multi-Hit) ---
+            // 4. Mock Routine: Hydration
             const rguid2 = Crypto.randomUUID();
             await sqlite.runAsync(
                 `INSERT INTO routines (rguid, uguid, gguid, name, duration, createdBy, lastModifiedBy) 
@@ -82,8 +134,7 @@ class DatabaseService {
                 [Crypto.randomUUID(), rguid2, uguid, uguid]
             );
 
-            // 2. STATIC EXCEPTION (The Grave)
-            // Bury the 2nd instance (index 1) of Water on March 8th
+            // 5. Static Exception (Grave)
             await sqlite.runAsync(
                 `INSERT INTO routine_exceptions (reguid, rguid, instanceDate, instanceIndex, createdBy) 
                  VALUES (?, ?, '2026-03-08', 1, ?)`,
@@ -92,18 +143,16 @@ class DatabaseService {
 
             await sqlite.execAsync('PRAGMA foreign_keys = ON;');
 
-            localStorage.setItem('temp_setup_uguid', uguid);
-            localStorage.setItem('temp_setup_gguid', gguid);
+            // Sync to storage
+            await AsyncStorage.setItem('temp_setup_uguid', uguid);
+            await AsyncStorage.setItem('temp_setup_gguid', gguid);
             
-            console.log("Database Seeding Complete with Mock Routines");
+            console.log("DB Service: Seeding Complete.");
         } catch (err) {
             console.error("Seeding failed:", err);
         }
     }
 
-    /**
-     * FETCH WRAPPERS
-     */
     async getLatestUser() {
         try {
             const sqlite = await this.getDb();
@@ -113,20 +162,14 @@ class DatabaseService {
         }
     }
 
-    /**
-     * DYNAMIC UPDATE METHOD (With Whitelist)
-     */
     async updateField(tableName: string, columnName: string, value: any, guidLabel: string, guidValue: string) {
         try {
             const sqlite = await this.getDb();
-            
             const allowedTables = ['users', 'groups', 'routines', 'routine_schedules'];
-            if (!allowedTables.includes(tableName)) {
-                throw new Error(`Unauthorized table: ${tableName}`);
-            }
+            if (!allowedTables.includes(tableName)) throw new Error(`Unauthorized table: ${tableName}`);
 
             const query = `UPDATE ${tableName} SET ${columnName} = ?, lastModifiedBy = ?, lastModifiedDate = CURRENT_TIMESTAMP WHERE ${guidLabel} = ?`;
-            const sessionUguid = localStorage.getItem('session_uguid') || 'system';
+            const sessionUguid = (await AsyncStorage.getItem('session_uguid')) || 'system';
 
             await sqlite.runAsync(query, [value, sessionUguid, guidValue]);
             return true;
@@ -136,15 +179,20 @@ class DatabaseService {
         }
     }
 
-    /**
-     * SETUP DATA UPDATE
-     * Specifically for the onboarding flow to update the placeholder user.
-     */
     async updateSetupData(firstName: string, lastName: string, email: string, groupName: string) {
-        const uguid = localStorage.getItem('temp_setup_uguid');
-        const gguid = localStorage.getItem('temp_setup_gguid');
+        let uguid = await AsyncStorage.getItem('temp_setup_uguid');
+        let gguid = await AsyncStorage.getItem('temp_setup_gguid');
 
-        if (!uguid || !gguid) return false;
+        if (!uguid || !gguid) {
+            await this.recoverSetupGuids();
+            uguid = await AsyncStorage.getItem('temp_setup_uguid');
+            gguid = await AsyncStorage.getItem('temp_setup_gguid');
+        }
+
+        if (!uguid || !gguid) {
+            console.error("Setup failed: Could not resolve GUIDs.");
+            return false;
+        }
 
         try {
             const sqlite = await this.getDb();
@@ -159,28 +207,37 @@ class DatabaseService {
                 );
             });
 
-            // Set official session
-            localStorage.setItem('session_uguid', uguid);
-            localStorage.setItem('session_gguid', gguid);
+            await AsyncStorage.setItem('session_uguid', uguid);
+            await AsyncStorage.setItem('session_gguid', gguid);
             return true;
         } catch (e) {
-            console.error("Setup update failed:", e);
+            console.error("Setup update failed at SQL level:", e);
             return false;
         }
     }
 
     async resetApp() {
         try {
-            const sqlite = await this.getDb();
+            const sqlite = await getSqliteDb();
             await sqlite.execAsync('PRAGMA foreign_keys = OFF;');
-            await sqlite.runAsync('DELETE FROM users');
-            await sqlite.runAsync('DELETE FROM groups');
-            await sqlite.runAsync('DELETE FROM routines');
-            await sqlite.runAsync('DELETE FROM routine_schedules');
-            await sqlite.runAsync('DELETE FROM routine_exceptions');
+            
+            await sqlite.execAsync(`
+                DROP TABLE IF EXISTS routine_exceptions;
+                DROP TABLE IF EXISTS routine_instances;
+                DROP TABLE IF EXISTS routine_schedules;
+                DROP TABLE IF EXISTS routines;
+                DROP TABLE IF EXISTS users;
+                DROP TABLE IF EXISTS groups;
+                DROP TABLE IF EXISTS ringtones;
+            `);
+            
             await sqlite.execAsync('PRAGMA foreign_keys = ON;');
+            this.initPromise = null;
+            await AsyncStorage.clear(); 
+            console.log("DB Service: System Reset Complete.");
             return true;
         } catch (error) {
+            console.error("Reset failed:", error);
             return false;
         }
     }

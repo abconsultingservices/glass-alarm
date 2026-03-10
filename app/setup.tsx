@@ -1,5 +1,5 @@
 import React, { useState, useRef, useEffect } from 'react';
-import { View, Text, Pressable, Animated } from 'react-native';
+import { View, Text, Pressable, Animated, ActivityIndicator } from 'react-native';
 import { useRouter } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { dbService } from '../services/DatabaseService';
@@ -7,46 +7,41 @@ import { useThemedStyles } from '../hooks/useThemedStyles';
 import { GlassFormRenderer, Section } from '../components/GlassFormRenderer';
 import { getInitialFormState, getInitialErrorState } from '../utils/ValidationEngine';
 
-// Define Schema at top to prevent "access before initialization" errors
 const SETUP_SCHEMA: Section[] = [
     {
         sectionType: 'pills',
-        label: 'INDIVIDUAL PILLS',
+        label: 'PROFILE BASICS',
         fields: [
             { 
-                key: 'name', 
-                label: 'Name', 
-                validation: [{ type: 'required', errorMsg: 'Name is required' },
-                  { type: 'length', minLength: 2, errorMsg: 'Name is too short' }],
-                config: { autoCapitalize: 'words', textContentType: 'name' } 
-            }/*,
-            {
-                key: 'handle',
-                label: 'User Handle',
-                defaultValue: 'randomhandle',
-                overrideFilter: /[^a-zA-Z0-9]/g,
-                validation: [{ type: 'length', minLength: 3, errorMsg: 'Too short' }],
-                config: { autoCapitalize: 'none' }
-            }*/
+                key: 'firstName', 
+                label: 'First Name', 
+                validation: [{ type: 'required', errorMsg: 'First name is required' }],
+                config: { autoCapitalize: 'words', textContentType: 'givenName' } 
+            },
+            { 
+                key: 'lastName', 
+                label: 'Last Name', 
+                validation: [{ type: 'required', errorMsg: 'Last name is required' }],
+                config: { autoCapitalize: 'words', textContentType: 'familyName' } 
+            }
         ]
     },
     {
         sectionType: 'insetGroup',
-        label: 'INSET GROUP',
-        footer: 'iPhone can securely monitor your profile data and alert you to syncing issues.',
+        label: 'ACCOUNT & FAMILY',
+        footer: 'All data remains local on this device. We never upload your routines.',
         fields: [
             { 
                 key: 'email', 
-                label: 'Email', 
+                label: 'Email Address', 
                 validation: [{ type: 'email', errorMsg: 'Invalid email address' }],
                 config: { autoCapitalize: 'none', keyboardType: 'email-address', textContentType: 'emailAddress' } 
             },
             { 
-                key: 'phone', 
-                label: 'Phone', 
-                subtext: 'Include + and country code for international.',
-                validation: [{ type: 'phone', errorMsg: 'Invalid phone format' }],
-                config: { autoCapitalize: 'none', keyboardType: 'numbers-and-punctuation', textContentType: 'telephoneNumber' } 
+                key: 'groupName', 
+                label: 'Group Name', 
+                validation: [{ type: 'required', errorMsg: 'A group name is required' }],
+                config: { autoCapitalize: 'words', placeholder: 'e.g. The Smiths' } 
             },
         ]
     }
@@ -59,8 +54,18 @@ export default function Setup() {
 
     const [form, setForm] = useState(() => getInitialFormState(SETUP_SCHEMA));
     const [fieldErrors, setFieldErrors] = useState(() => getInitialErrorState(SETUP_SCHEMA));
+    const [isRecovering, setIsRecovering] = useState(true);
 
-    // --- Shake Animation Hook ---
+    // --- RECOVERY CHECK ---
+    useEffect(() => {
+        const verifySession = async () => {
+            // Ensure GUIDs are present before letting user interact
+            await dbService.recoverSetupGuids();
+            setIsRecovering(false);
+        };
+        verifySession();
+    }, []);
+
     const shakeAnim = useRef(new Animated.Value(0)).current;
 
     const triggerShake = () => {
@@ -72,7 +77,8 @@ export default function Setup() {
         ]).start();
     };
 
-    const isInvalid = !form.name || !form.email || Object.values(fieldErrors).some(e => e !== '');
+    const isInvalid = !form.firstName || !form.lastName || !form.email || !form.groupName || 
+                       Object.values(fieldErrors).some(e => e !== '');
 
     const handlePress = async () => {
         if (isInvalid) {
@@ -81,21 +87,36 @@ export default function Setup() {
         }
 
         try {
-            await dbService.createUser(form.name, form.email, form.phone);
-            router.replace('/calendar');
+            const success = await dbService.updateSetupData(
+                form.firstName,
+                form.lastName,
+                form.email,
+                form.groupName
+            );
+
+            if (success) {
+                router.replace('/calendar');
+            } else {
+                alert("Setup failed: Could not connect to your local profile. Please restart the app.");
+            }
         } catch (e) { 
-            console.error(e); 
+            console.error("Setup handlePress error:", e); 
         }
     };
 
-    const handleCancel = async () => {
-        await AlarmManager.cancelAllAlarms();
-        alert("All alarms cancelled.");
-    };
+    if (isRecovering) {
+        return (
+            <View style={[styles.container, { justifyContent: 'center' }]}>
+                <ActivityIndicator size="large" color={colors.text} />
+            </View>
+        );
+    }
 
     return (
         <View style={[styles.container, { paddingBottom: Math.max(insets.bottom, 20), paddingTop: insets.top }]}>
-            <Text style={[styles.title, { marginBottom: 30 }]}>Setup Profile</Text>
+            <Text style={[styles.title, { marginBottom: 30, paddingHorizontal: 20 }]}>
+                Setup Profile
+            </Text>
 
             <GlassFormRenderer 
                 schema={SETUP_SCHEMA}
@@ -105,7 +126,6 @@ export default function Setup() {
                 setErrors={setFieldErrors}
             />
 
-            {/* Bottom Anchored Button with Shake Wrapper */}
             <Animated.View 
                 style={[
                     styles.floatingButtonContainer, 
@@ -123,7 +143,7 @@ export default function Setup() {
                     ]} 
                     onPress={handlePress}
                 >
-                    <Text style={styles.buttonText}>Save & Enter</Text>
+                    <Text style={styles.buttonText}>Start My Routines</Text>
                 </Pressable>
             </Animated.View>
         </View>

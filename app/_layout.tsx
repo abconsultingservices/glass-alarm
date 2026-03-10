@@ -1,26 +1,34 @@
 import { DarkTheme, DefaultTheme, ThemeProvider } from '@react-navigation/native';
 import { Stack, useRouter, useSegments } from "expo-router";
-import { useEffect } from "react";
-import { Platform } from "react-native";
+import { useEffect, useState } from "react";
+import { Platform, View, ActivityIndicator } from "react-native";
 import { useThemedStyles } from '../hooks/useThemedStyles';
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import { dbService } from '../services/DatabaseService';
 
 export default function RootLayout() {
   const { isDark, colors } = useThemedStyles(); 
   const router = useRouter();
   const segments = useSegments();
+  const [isDbReady, setIsDbReady] = useState(false);
 
-  // 1. Restore last view state (Year/Month) on hard close
+  // --- 1. DATABASE INITIALIZATION & NAVIGATION RESTORE ---
   useEffect(() => {
-    const restoreNavigation = async () => {
-      // Only run this at the app root entry point
-      if (segments.length === 0 || segments[0] === 'index') {
-        try {
+    const initializeApp = async () => {
+      try {
+        // --- TEMPORARY: NUKE OLD SCHEMA ---
+        // Uncomment the next line, run the app once, then comment it back out.
+        // await dbService.resetApp(); 
+        
+        // 1. Ensure DB is ready and seeded
+        await dbService.initialize();
+        setIsDbReady(true);
+
+        // 2. Only run navigation restoration at the app root entry point
+        if (segments.length === 0 || segments[0] === 'index') {
           const lastView = await AsyncStorage.getItem('calendar_zoom_level');
           const lastDate = await AsyncStorage.getItem('calendar_last_date');
           const today = new Date().toISOString().split('T')[0];
-          
-          // Target date is either the saved one or today
           const targetDate = lastDate || today;
 
           if (lastView === 'year') {
@@ -30,20 +38,20 @@ export default function RootLayout() {
               pathname: '/calendar/day',
               params: { date: targetDate }
             });
-          } else {
-            // Default to Month view
+          } else if (lastView === 'month') {
             router.replace('/calendar');
           }
-        } catch (e) {
-          console.error("Failed to restore navigation state", e);
+          // If no lastView, it stays on the 'index' (usually Welcome or Setup)
         }
+      } catch (e) {
+        console.error("Failed to initialize app state", e);
       }
     };
 
-    restoreNavigation();
+    initializeApp();
   }, []);
 
-  // 2. Web CSS Injection for Glass Inputs
+  // --- 2. Web CSS Injection for Glass Inputs ---
   useEffect(() => {
     const isWeb = typeof window !== "undefined" && (Platform?.OS === "web" || (Platform as any)?.default?.OS === "web");
 
@@ -60,33 +68,30 @@ export default function RootLayout() {
           appearance: none !important;
           border: none !important;
         }
-
-        [data-glass-input="true"]:-webkit-autofill,
-        [data-glass-input="true"]:-webkit-autofill:hover, 
-        [data-glass-input="true"]:-webkit-autofill:focus {
+        [data-glass-input="true"]:-webkit-autofill {
           -webkit-text-fill-color: ${isDark ? '#ffffff' : '#000000'} !important;
           box-shadow: 0 0 0px 1000px transparent inset !important;
-          -webkit-box-shadow: 0 0 0px 1000px transparent inset !important;
           transition: background-color 5000s ease-in-out 0s !important;
-          background-color: transparent !important;
         }
-
         [data-glass-input="true"]::placeholder {
           color: ${colors.placeholderText} !important;
           opacity: 1 !important; 
           font-weight: 500 !important;
-          -webkit-text-fill-color: ${colors.placeholderText} !important;
         }
       `;
       document.head.appendChild(style);
-      
-      return () => {
-        if (document.head.contains(style)) {
-          document.head.removeChild(style);
-        }
-      };
+      return () => { if (document.head.contains(style)) document.head.removeChild(style); };
     }
   }, [isDark, colors]);
+
+  // --- 3. LOADING STATE GUARD ---
+  if (!isDbReady) {
+    return (
+      <View style={{ flex: 1, backgroundColor: colors.background, justifyContent: 'center', alignItems: 'center' }}>
+        <ActivityIndicator size="large" color={colors.text} />
+      </View>
+    );
+  }
 
   return (
     <ThemeProvider value={isDark ? DarkTheme : DefaultTheme}>
@@ -96,10 +101,6 @@ export default function RootLayout() {
         <Stack.Screen name="calendar/index" />
         <Stack.Screen name="calendar/year" />
         <Stack.Screen name="settings" />
-        {/*
-        <Stack.Screen name="routines" />
-        */}
-        {/* Modal presentation for a better iOS "Liquid Glass" edit feel */}
         <Stack.Screen 
           name="edit/[field]" 
           options={{ 

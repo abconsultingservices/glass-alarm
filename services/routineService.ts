@@ -1,9 +1,10 @@
-import AsyncStorage from '@react-native-async-storage/async-storage';
+import { dbService } from './DatabaseService';
+import * as Crypto from 'expo-crypto';
 
 export interface Routine {
-  id: string;
+  id: string; // Maps to rguid
   name: string;
-  repeat: string;
+  repeat: string; 
   startTime: Date;
   endTime: Date;
   isEnabled: boolean;
@@ -19,67 +20,110 @@ export interface RoutineException {
   instanceIndex: number;
 }
 
-export const MOCK_ROUTINES: Routine[] = [
-  {
-    id: '1',
-    name: 'Morning Meditation',
-    repeat: 'Daily',
-    startTime: new Date(2026, 2, 8, 7, 0),
-    endTime: new Date(2026, 2, 8, 7, 30),
-    isEnabled: true,
-  },
-  {
-    id: '2',
-    name: 'Hydration / Water',
-    repeat: 'Daily',
-    startTime: new Date(2026, 2, 8, 9, 0),
-    endTime: new Date(2026, 2, 8, 9, 15),
-    isEnabled: true,
-    frequencyHours: 4,
-    maxOccurrences: 3, 
-  },
-];
-
-const INITIAL_EXCEPTIONS: RoutineException[] = [
-  { routineId: '2', date: '2026-03-08', instanceIndex: 1 }
-];
-
-const EXCEPTIONS_KEY = 'routine_exceptions';
-
 export const RoutineService = {
-  // Get all routines (This is where SQLite SELECT will go)
+  /**
+   * Fetches routines using Expo SQLite getAllAsync
+   */
   getRoutines: async (): Promise<Routine[]> => {
-    return MOCK_ROUTINES; 
+    try {
+
+
+      // Use the internal helper from your DatabaseService
+      const db = await (dbService as any).getDb(); 
+      
+      const sql = `
+        SELECT 
+          r.rguid as id, 
+          r.name, 
+          r.isActive as isEnabled, 
+          r.duration,
+          s.type as repeat, 
+          s.startTime as timeStr, 
+          s.frequencyHours, 
+          s.maxOccurrences
+        FROM routines r
+        JOIN routine_schedules s ON r.rguid = s.rguid
+        WHERE r.isActive = 1
+      `;
+      
+      const rows = await db.getAllAsync(sql);
+      
+      return rows.map((row: any) => {
+        const [hours, minutes] = row.timeStr.split(':').map(Number);
+        const startTime = new Date();
+        startTime.setHours(hours, minutes, 0, 0);
+        
+        const endTime = new Date(startTime);
+        endTime.setMinutes(startTime.getMinutes() + (row.duration || 30));
+
+        return {
+          id: row.id,
+          name: row.name,
+          repeat: row.repeat,
+          startTime: startTime,
+          endTime: endTime,
+          isEnabled: row.isEnabled === 1,
+          frequencyHours: row.frequencyHours,
+          maxOccurrences: row.maxOccurrences
+        };
+      });
+    } catch (e) {
+      console.error("RoutineService.getRoutines failed:", e);
+      return [];
+    }
   },
 
-  // Get all exceptions
+  /**
+   * Fetches exceptions using Expo SQLite getAllAsync
+   */
   getExceptions: async (): Promise<RoutineException[]> => {
-    const saved = await AsyncStorage.getItem(EXCEPTIONS_KEY);
-    if (saved) return JSON.parse(saved);
-    
-    // Fallback to our static exception if storage is empty
-    return INITIAL_EXCEPTIONS;
+    try {
+      const db = await (dbService as any).getDb();
+      return await db.getAllAsync(
+        "SELECT rguid as routineId, instanceDate as date, instanceIndex FROM routine_exceptions"
+      );
+    } catch (e) {
+      console.error("RoutineService.getExceptions failed:", e);
+      return [];
+    }
   },
 
-  // Toggle an exception (Bury/Restore)
+  /**
+   * Toggles the "Bury" state using Expo SQLite runAsync
+   */
   toggleException: async (
-    exceptions: RoutineException[], 
+    currentExceptions: RoutineException[], 
     routineId: string, 
     date: string, 
     index: number
   ): Promise<RoutineException[]> => {
-    const existingIdx = exceptions.findIndex(
-      ex => ex.routineId === routineId && ex.date === date && ex.instanceIndex === index
-    );
+    try {
+      const db = await (dbService as any).getDb();
+      const sessionUguid = localStorage.getItem('session_uguid') || 'system';
+      
+      const existing = currentExceptions.find(
+        ex => ex.routineId === routineId && ex.date === date && ex.instanceIndex === index
+      );
 
-    let newExceptions;
-    if (existingIdx > -1) {
-      newExceptions = exceptions.filter((_, i) => i !== existingIdx);
-    } else {
-      newExceptions = [...exceptions, { routineId, date, instanceIndex: index }];
+      if (existing) {
+        // RESTORE: Use runAsync for Expo SQLite
+        await db.runAsync(
+          "DELETE FROM routine_exceptions WHERE rguid = ? AND instanceDate = ? AND instanceIndex = ?",
+          [routineId, date, index]
+        );
+      } else {
+        // BURY: Use runAsync for Expo SQLite
+        await db.runAsync(
+          `INSERT INTO routine_exceptions (reguid, rguid, instanceDate, instanceIndex, createdBy) 
+           VALUES (?, ?, ?, ?, ?)`,
+          [Crypto.randomUUID(), routineId, date, index, sessionUguid]
+        );
+      }
+
+      return await RoutineService.getExceptions();
+    } catch (e) {
+      console.error("RoutineService.toggleException failed:", e);
+      return currentExceptions;
     }
-
-    await AsyncStorage.setItem(EXCEPTIONS_KEY, JSON.stringify(newExceptions));
-    return newExceptions;
   }
 };
