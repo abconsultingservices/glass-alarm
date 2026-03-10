@@ -50,11 +50,12 @@ export class ThemeUtils {
             primary: active.primary,
             
             mutedText: this.getOpacityColor(active.text, 0.6),
-            placeholderText: this.getOpacityColor(active.text, 0.3),
+            placeholderText: this.getOpacityColor(active.text, 0.25), // Lightened for Liquid Glass
             
             // Glass & Borders
             glassBackground: this.getOpacityColor(active.text, 0.12),
             glassBorder: active.border,
+            borderMuted: this.getOpacityColor(active.text, 0.05),
             
             // Semantic Colors
             error: isDark ? '#FF453A' : '#FF3B30',
@@ -128,14 +129,24 @@ export class ThemeUtils {
                 fontFamily: systemFont,
                 flex: 1,
                 color: colors.text,
-                fontSize: 17,
+                fontSize: 16,
+                fontWeight: '400',
                 height: '100%',
-                marginHorizontal: 16,
+                paddingHorizontal: 16,
                 backgroundColor: 'transparent',
                 ...Platform.select({
-                    ios: { letterSpacing: -0.4, fontWeight: '500' },
-                    web: { outlineStyle: 'none' }
+                    ios: { letterSpacing: -0.4},
+                    web: { 
+                        fontSize: 14,
+                        outlineStyle: 'none',
+                        WebkitBoxShadow: `0 0 0px 1000px transparent inset`,
+                        WebkitTextFillColor: colors.text,
+                    }
                 })
+            },
+            clearIcon: {
+                paddingRight: 15,
+                justifyContent: 'center',
             },
             // --- INSET GROUPS (APPLE STYLE) ---
             insetGroup: {
@@ -143,8 +154,8 @@ export class ThemeUtils {
                 overflow: 'hidden',
                 borderWidth: Platform.OS === 'ios' ? 0 : 1,
                 borderColor: colors.glassBorder,
-                marginBottom: 20,
-                borderRadius: 12,
+                marginBottom: 24,
+                borderRadius: 20, // Deep Curve
             },
             inputRow: {
                 flexDirection: 'row',
@@ -154,12 +165,12 @@ export class ThemeUtils {
             divider: {
                 height: StyleSheet.hairlineWidth,
                 backgroundColor: colors.glassBorder,
-                marginLeft: 16,
+                marginHorizontal: 16,
             },
             inputStack: {
                 flex: 1,
                 justifyContent: 'center',
-                paddingVertical: 8,
+                paddingVertical: 10,
             },
             fieldGroupTitle: {
                 color: colors.mutedText, 
@@ -168,7 +179,8 @@ export class ThemeUtils {
                 fontWeight: '400',
                 textTransform: 'uppercase',
                 marginBottom: 8,
-                marginHorizontal: 16
+                marginHorizontal: 16,
+                letterSpacing: 0.5,
             },
             groupFootnote: {
                 fontFamily: systemFont,
@@ -189,23 +201,27 @@ export class ThemeUtils {
                 fontFamily: systemFont,
                 backgroundColor: colors.primary,
                 paddingVertical: 16,
-                borderRadius: 14, // Slightly less round for native feel
+                borderRadius: 30, // Pill style button
                 justifyContent: 'center',
                 alignItems: 'center',
                 ...Platform.select({
                     ios: {
-                        shadowColor: '#000',
-                        shadowOffset: { width: 0, height: 2 },
-                        shadowOpacity: 0.1,
-                        shadowRadius: 4,
+                        shadowColor: colors.primary,
+                        shadowOffset: { width: 0, height: 4 },
+                        shadowOpacity: 0.3,
+                        shadowRadius: 8,
+                    },
+                    web: {
+                        boxShadow: `0px 8px 20px ${this.getOpacityColor(colors.primary, 0.3)}`,
                     }
                 })
             },
             buttonText: { 
                 fontFamily: systemFont,
                 color: '#FFFFFF',
-                fontSize: 17,
+                fontSize: 18,
                 fontWeight: '600',
+                letterSpacing: -0.5,
             },
             // --- CALENDAR & HEADER COMPONENTS ---
             calendarHeaderRow: {
@@ -261,10 +277,10 @@ export class ThemeUtils {
                 color: colors.text,
             },
             circularButton: {
-                width: 30,
-                height: 30,
-                borderRadius: 15,
-                backgroundColor: colors.isDark ? 'rgba(255,255,255,0.1)' : 'rgba(0,0,0,0.05)',
+                width: 32,
+                height: 32,
+                borderRadius: 16,
+                backgroundColor: colors.isDark ? 'rgba(255,255,255,0.12)' : 'rgba(0,0,0,0.05)',
                 justifyContent: 'center',
                 alignItems: 'center',
             },
@@ -275,15 +291,15 @@ export class ThemeUtils {
             segmentBackground: {
                 flexDirection: 'row',
                 backgroundColor: colors.isDark ? '#2C2C2E' : '#E3E3E8',
-                borderRadius: 9,
+                borderRadius: 24,
                 padding: 2,
-                height: 32,
+                height: 34,
             },
             segmentItem: {
                 flex: 1,
                 justifyContent: 'center',
                 alignItems: 'center',
-                borderRadius: 7,
+                borderRadius: 22,
             },
             segmentItemActive: {
                 backgroundColor: colors.isDark ? '#636366' : '#FFFFFF',

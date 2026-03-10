@@ -37,7 +37,6 @@ export const GlassFormRenderer = ({ schema, form, setForm, errors, setErrors }: 
     const { styles, colors, getPressedStyle } = useThemedStyles();
     const router = useRouter();
 
-    // Added 'type' parameter to handleUpdate to support smart filtering
     const handleUpdate = (key: string, val: string, rules: ValidationRule[] = [], overrideFilter?: RegExp, type?: string) => {
         let filteredVal = val;
         if (overrideFilter) {
@@ -53,9 +52,6 @@ export const GlassFormRenderer = ({ schema, form, setForm, errors, setErrors }: 
             else if (type === 'url' || key === 'url') {
                 filteredVal = val.replace(/[^a-zA-Z0-9\-._~:/?#[\]@!$&'()*+,;=]/g, '');
             }
-            else if (type === 'password' || key === 'password') {
-                filteredVal = val;
-            }
             else if (key === 'name') {
                 filteredVal = val.replace(/[^a-zA-Z\s\-']/g, '');
             }
@@ -68,6 +64,14 @@ export const GlassFormRenderer = ({ schema, form, setForm, errors, setErrors }: 
 
     return (
         <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={{ paddingBottom: 120 }}>
+
+            {/* Inject CSS for Web Placeholder Color */}
+            {Platform.OS === 'web' && (
+                <style dangerouslySetInnerHTML={{ __html: `
+                    input::placeholder { color: ${colors.placeholderText} !important; opacity: 1; font-weight: 300; }
+                `}} />
+            )}
+            
             {schema.map((section, sIdx) => (
                 <View key={`section-${sIdx}`} style={{ marginBottom: 32 }}>
                     {section.label && (
@@ -82,8 +86,6 @@ export const GlassFormRenderer = ({ schema, form, setForm, errors, setErrors }: 
                             const isReadOnly = section.readOnly || field.mode === 'view' || !!field.destination;
 
                             const { defaultValue, ...cleanConfig } = field.config || {};
-
-                            console.log(field);
 
                             if (isReadOnly) {
                                 return (
@@ -134,24 +136,22 @@ export const GlassFormRenderer = ({ schema, form, setForm, errors, setErrors }: 
                             const inputMarkup = (
                                 <View style={isPill 
                                     ? [styles.inputContainer, hasError && { borderColor: colors.error }] 
-                                    : styles.inputRow
+                                    : [styles.inputRow, { paddingRight: 8 }] // Added padding for the icon
                                 }>
                                     <View style={styles.inputStack}>
                                         <TextInput
-                                            style={styles.inputField}
-                                            value={form[field.key]}
+                                            style={[styles.inputField, !isPill && { paddingHorizontal: 16 }]}
+                                            value={form[field.key] ?? ''}
                                             placeholder={field.label}
                                             placeholderTextColor={colors.placeholderText}
-                                            // Pass field.type to handleUpdate
                                             onChangeText={(t) => handleUpdate(field.key, t, field.validation, field.overrideFilter, field.type)}
-                                            // Map field.type to native keyboard behaviors
                                             secureTextEntry={field.type === 'password'}
                                             keyboardType={
                                                 field.type === 'email' ? 'email-address' : 
                                                 field.type === 'phone' ? 'phone-pad' : 
                                                 field.type === 'url' ? 'url' : 'default'
                                             }
-                                            {...field.config}
+                                            {...cleanConfig}
                                             dataSet={{ 'glass-input': 'true' }}
                                         />
                                         {hasError ? (
@@ -168,13 +168,16 @@ export const GlassFormRenderer = ({ schema, form, setForm, errors, setErrors }: 
                                             <Text style={{ fontSize: 20 }}>⚠️</Text>
                                         </View>
                                     ) : (form[field.key] && form[field.key].length > 0) ? (
-                                        // Only hide our custom X on iOS when the native clear button is active
                                         (Platform.OS === 'ios' && field.config?.clearButtonMode === 'while-editing') ? null : (
                                             <Pressable 
                                                 onPress={() => handleUpdate(field.key, '', field.validation)}
-                                                style={({ pressed }) => [styles.clearIcon, getPressedStyle(pressed)]}
+                                                style={({ pressed }) => [
+                                                    styles.clearIcon, 
+                                                    getPressedStyle(pressed),
+                                                    { padding: 8 } // Native hit box size
+                                                ]}
                                             >
-                                                <Text style={{ color: colors.mutedText, fontSize: 18 }}>✕</Text>
+                                                <Ionicons name="close-circle" size={18} color={colors.placeholderText} />
                                             </Pressable>
                                         )
                                     ) : null}

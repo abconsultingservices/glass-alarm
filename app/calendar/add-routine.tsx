@@ -10,10 +10,19 @@ import { Ionicons } from '@expo/vector-icons';
 
 const ADD_SCHEMA: Section[] = [
     {
-        sectionType: 'insetGroup',
+        sectionType: 'pills',
         fields: [
-            { key: 'name', label: 'Title', validation: [{ type: 'required', errorMsg: 'Required' }], config: { placeholder: 'Routine Title' } },
-            { key: 'duration', label: 'Duration (Mins)', config: { keyboardType: 'number-pad', placeholder: '30' } }
+            { 
+                key: 'name', 
+                label: 'Title', 
+                validation: [{ type: 'required', errorMsg: 'Required' }], 
+                config: { placeholder: 'Title', placeholderTextColor: 'rgba(255,255,255,0.3)' } 
+            },
+            { 
+                key: 'location', 
+                label: 'Location', 
+                config: { placeholder: 'Location or Video Call', placeholderTextColor: 'rgba(255,255,255,0.3)' } 
+            }
         ]
     },
     {
@@ -22,6 +31,7 @@ const ADD_SCHEMA: Section[] = [
         footer: 'Multi-hit routines (like water) will automatically expand on your calendar.',
         fields: [
             { key: 'startTime', label: 'Starts', config: { placeholder: '08:00' } },
+            { key: 'duration', label: 'Duration (Mins)', config: { keyboardType: 'number-pad', placeholder: '30' } },
             { key: 'type', label: 'Repeat', config: { defaultValue: 'daily' } },
             { key: 'frequencyHours', label: 'Every X Hours', config: { keyboardType: 'number-pad' } },
             { key: 'maxOccurrences', label: 'Max Daily Hits', config: { keyboardType: 'number-pad' } }
@@ -32,11 +42,12 @@ const ADD_SCHEMA: Section[] = [
 export default function AddRoutine() {
     const router = useRouter();
     const insets = useSafeAreaInsets();
+    // Use the elevated color keys from your updated ThemeUtils
     const { styles, colors, getPressedStyle } = useThemedStyles(); 
 
     const [form, setForm] = useState(() => getInitialFormState(ADD_SCHEMA));
     const [errors, setErrors] = useState(() => getInitialErrorState(ADD_SCHEMA));
-    const [activeTab, setActiveTab] = useState('Routine'); // Routine | Tasks
+    const [activeTab, setActiveTab] = useState('Routine'); 
 
     const shakeAnim = useRef(new Animated.Value(0)).current;
 
@@ -65,9 +76,10 @@ export default function AddRoutine() {
     };
 
     return (
-        <View style={[styles.modalContainer, { backgroundColor: colors.background }]}>
+        // Changed from styles.container to styles.modalContainer to get the IC Dark Elevated background
+        <View style={styles.modalContainer}>
             {/* --- IOS NATIVE MODAL HEADER --- */}
-            <View style={[styles.modalHeader, { paddingTop: Platform.OS === 'ios' ? 20 : insets.top }]}>
+            <View style={[styles.modalHeader, { paddingTop: Platform.OS === 'ios' ? 12 : insets.top }]}>
                 <Pressable 
                     onPress={() => router.back()} 
                     style={({ pressed }) => [styles.circularButton, getPressedStyle(pressed)]}
@@ -108,8 +120,9 @@ export default function AddRoutine() {
                 </View>
             </View>
 
+            {/* Content with proper padding to match iOS inset behavior */}
             <ScrollView 
-                contentContainerStyle={{ paddingBottom: 100 }}
+                contentContainerStyle={{ paddingHorizontal: 16, paddingBottom: 100 }}
                 showsVerticalScrollIndicator={false}
             >
                 <Animated.View style={{ transform: [{ translateX: shakeAnim }] }}>
