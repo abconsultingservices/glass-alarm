@@ -6,7 +6,6 @@ import { useThemedStyles } from '../../hooks/useThemedStyles';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { shouldShowRoutineOnDate } from '../../utils/routineEngine';
-// Import shared service and types
 import { RoutineService, Routine, RoutineException } from '../../services/routineService';
 
 const { width: SCREEN_WIDTH } = Dimensions.get('window');
@@ -17,7 +16,6 @@ export default function DayView() {
   const { colors, styles, getPressedStyle } = useThemedStyles();
   const isWeb = Platform.OS === 'web';
 
-  // --- REFRESH LOGIC (Active Approach) ---
   const getLocalTodayString = () => {
     const now = new Date();
     const offset = now.getTimezoneOffset() * 60000;
@@ -30,10 +28,8 @@ export default function DayView() {
   const [exceptions, setExceptions] = useState<RoutineException[]>([]);
   let touchX = 0;
 
-  // --- SYNC ON FOCUS (Route Changes) ---
   useFocusEffect(
     useCallback(() => {
-      // Re-check system clock on entry
       const freshToday = getLocalTodayString();
       setSystemToday(freshToday);
 
@@ -56,23 +52,19 @@ export default function DayView() {
     }, [])
   );
 
-  // --- PERSISTENCE WRAPPERS ---
   const updateDate = async (date: string) => {
-    const freshToday = getLocalTodayString();
-    setSystemToday(freshToday); 
+    setSystemToday(getLocalTodayString()); 
     setSelectedDate(date);
     await AsyncStorage.setItem('calendar_last_date', date);
   };
 
-  const handleToggleInstance = async (item: Routine) => {
-    const rId = item.id.split('-v')[0];
+  const handleToggleInstance = async (item: any) => {
+    const rId = item.originalId || item.id;
     const idx = item.instanceIndex ?? 0;
-    // Use the shared service to toggle the exception
     const nextEx = await RoutineService.toggleException(exceptions, rId, selectedDate, idx);
     setExceptions(nextEx);
   };
 
-  // --- WEEK STRIP LOGIC ---
   const weekDays = useMemo(() => {
     const current = new Date(selectedDate + 'T00:00:00');
     const dayOfWeek = current.getDay(); 
@@ -110,12 +102,11 @@ export default function DayView() {
   const displayRoutines = useMemo(() => {
     const [y, m, d] = selectedDate.split('-').map(Number);
     const targetDate = new Date(y, m - 1, d);
-    const expandedList: Routine[] = [];
+    const expandedList: any[] = [];
 
     routines.forEach(routine => {
       if (shouldShowRoutineOnDate(routine, targetDate)) {
-        const isMultiHit = routine.frequencyHours && routine.maxOccurrences;
-        const count = isMultiHit ? routine.maxOccurrences! : 1;
+        const count = routine.maxOccurrences || 1;
         for (let i = 0; i < count; i++) {
           const hasException = exceptions.some(ex => 
             ex.routineId === routine.id && ex.date === selectedDate && ex.instanceIndex === i
@@ -123,14 +114,16 @@ export default function DayView() {
 
           const start = new Date(routine.startTime);
           const end = new Date(routine.endTime);
-          if (isMultiHit) {
-            start.setHours(routine.startTime.getHours() + (i * routine.frequencyHours!));
-            end.setHours(routine.endTime.getHours() + (i * routine.frequencyHours!));
+          
+          if (i > 0 && routine.frequencyHours) {
+            start.setHours(start.getHours() + (i * routine.frequencyHours));
+            end.setHours(end.getHours() + (i * routine.frequencyHours));
           }
 
           expandedList.push({ 
             ...routine, 
-            id: isMultiHit ? `${routine.id}-v${i}` : routine.id, 
+            id: `${routine.id}-idx-${i}`, 
+            originalId: routine.id,
             startTime: start, 
             endTime: end, 
             instanceIndex: i,
@@ -159,29 +152,31 @@ export default function DayView() {
 
   return (
     <View style={[styles.setupContainer, { flex: 1, paddingTop: insets.top }]}>
-      {/* Header */}
       <View style={styles.calendarHeaderRow}>
         <Pressable onPress={handleSafeBack} style={({ pressed }) => [getPressedStyle(pressed), styles.glassPill]}>
           <Ionicons name="chevron-back" size={20} color={colors.text} />
           <Text style={{ color: colors.text, fontSize: 17 }}>{monthName}</Text>
         </Pressable>
         <View style={styles.glassPill}>
-          <Ionicons name="settings-outline" size={22} color={colors.text} />
-          <View style={styles.pillDivider} />
-          <Ionicons name="search-outline" size={22} color={colors.text} />
-          <View style={styles.pillDivider} />
-          <Ionicons name="add" size={26} color={colors.text} />
+            <Pressable 
+                onPress={() => router.push('/settings')}
+                style={({ pressed }) => getPressedStyle(pressed)}
+            >
+                <Ionicons name="settings-outline" size={22} color={colors.text} />
+            </Pressable>
+            <View style={styles.pillDivider} />
+            <Ionicons name="search-outline" size={22} color={colors.text} />
+            <View style={styles.pillDivider} />
+            <Ionicons name="add" size={26} color={colors.text} />
         </View>
       </View>
 
-      {/* Week Strip */}
       <View onTouchStart={onTouchStart} onTouchEnd={onTouchEnd} style={localStyles.weekContainer}>
         {isWeb && (
           <Pressable onPress={() => changeWeek('prev')} style={{ paddingRight: 10 }}>
             <Ionicons name="chevron-back" size={20} color={colors.text} />
           </Pressable>
         )}
-        
         <View style={localStyles.weekStrip}>
           {weekDays.map((day) => (
             <Pressable key={day.date} onPress={() => updateDate(day.date)} style={localStyles.dayItem}>
@@ -200,7 +195,6 @@ export default function DayView() {
             </Pressable>
           ))}
         </View>
-
         {isWeb && (
           <Pressable onPress={() => changeWeek('next')} style={{ paddingLeft: 10 }}>
             <Ionicons name="chevron-forward" size={20} color={colors.text} />
@@ -208,13 +202,11 @@ export default function DayView() {
         )}
       </View>
 
-      {/* Selected Date Label & Native Line */}
       <View style={localStyles.dateLabelContainer}>
         <Text style={[localStyles.dateText, { color: colors.text }]}>{fullDisplayDate}</Text>
         <View style={[localStyles.nativeLine, { backgroundColor: colors.glassBorder }]} />
       </View>
 
-      {/* Routine List */}
       <FlatList
         data={displayRoutines}
         keyExtractor={(item) => item.id}
@@ -225,10 +217,10 @@ export default function DayView() {
               <Text style={{ color: colors.text, fontSize: 17, fontWeight: '600' }}>{item.name}</Text>
               <Text style={{ color: colors.mutedText, fontSize: 13, marginTop: 2 }}>{item.repeat}</Text>
             </View>
-            <View style={{ alignItems: 'flex-end', marginRight: 12, opacity: item.isInstanceEnabled ? 1 : 0.4 }}>
+            <div style={{ alignItems: 'flex-end', marginRight: 12, opacity: item.isInstanceEnabled ? 1 : 0.4 }}>
               <Text style={{ color: colors.text, fontSize: 15, fontWeight: '500' }}>{formatTime(item.startTime)}</Text>
               <Text style={{ color: colors.mutedText, fontSize: 12 }}>to {formatTime(item.endTime)}</Text>
-            </View>
+            </div>
             <Switch 
               value={item.isInstanceEnabled} 
               onValueChange={() => handleToggleInstance(item)}
@@ -240,13 +232,9 @@ export default function DayView() {
         ListEmptyComponent={<Text style={{ color: colors.mutedText, textAlign: 'center', marginTop: 40 }}>No Routines Scheduled</Text>}
       />
 
-      {/* Footer */}
       <View style={[styles.calendarFooter, { paddingBottom: Math.max(insets.bottom, 20) }]}>
         <Pressable 
-          onPress={() => {
-            const freshToday = getLocalTodayString();
-            updateDate(freshToday);
-          }} 
+          onPress={() => updateDate(getLocalTodayString())} 
           style={styles.glassPill}
         >
           <Text style={{ color: colors.text, fontSize: 17, paddingHorizontal: 20 }}>Today</Text>

@@ -31,7 +31,6 @@ export default function CalendarMonthView() {
 
   let touchY = 0; 
 
-  // --- SYNC ON FOCUS ---
   useFocusEffect(
     useCallback(() => {
       const freshToday = getLocalTodayString();
@@ -46,7 +45,6 @@ export default function CalendarMonthView() {
 
         if (savedDate) {
           setSelectedDate(savedDate);
-          // Sync calendar view to the saved month
           setCurrentMonth(savedDate.substring(0, 7) + '-01');
         }
         setRoutines(fetchedRoutines);
@@ -56,7 +54,6 @@ export default function CalendarMonthView() {
     }, [])
   );
 
-  // --- NAVIGATION LOGIC ---
   const handleDatePress = (dateString: string) => {
     const freshToday = getLocalTodayString();
     setSystemToday(freshToday);
@@ -82,7 +79,6 @@ export default function CalendarMonthView() {
     const freshToday = getLocalTodayString(); 
     const todayYearMonth = freshToday.substring(0, 7);
 
-    // Twist: Select Today if entering current month, otherwise 1st of month
     let targetSelection = nextMonthYearMonth === todayYearMonth ? freshToday : `${nextMonthYearMonth}-01`;
 
     setSystemToday(freshToday);
@@ -99,9 +95,8 @@ export default function CalendarMonthView() {
     if (distance < -50) handleMonthChange('prev'); 
   };
 
-  // --- DATA INTERACTION ---
-  const handleToggleInstance = async (item: Routine) => {
-    const rId = item.id; // Now using rguid directly from DB
+  const handleToggleInstance = async (item: any) => {
+    const rId = item.originalId || item.id; 
     const idx = item.instanceIndex ?? 0;
     const nextEx = await RoutineService.toggleException(exceptions, rId, selectedDate, idx);
     setExceptions(nextEx);
@@ -129,25 +124,27 @@ export default function CalendarMonthView() {
   const displayRoutines = useMemo(() => {
     const [y, m, d] = selectedDate.split('-').map(Number);
     const targetDate = new Date(y, m - 1, d);
-    const expandedList: Routine[] = [];
+    const expandedList: any[] = [];
 
     routines.forEach(routine => {
       if (shouldShowRoutineOnDate(routine, targetDate)) {
-        const isMultiHit = routine.frequencyHours && routine.maxOccurrences;
-        const count = isMultiHit ? routine.maxOccurrences! : 1;
+        const count = routine.maxOccurrences || 1;
         for (let i = 0; i < count; i++) {
           const hasException = exceptions.some(ex => 
             ex.routineId === routine.id && ex.date === selectedDate && ex.instanceIndex === i
           );
           const start = new Date(routine.startTime);
           const end = new Date(routine.endTime);
-          if (isMultiHit) {
-            start.setHours(routine.startTime.getHours() + (i * routine.frequencyHours!));
-            end.setHours(routine.endTime.getHours() + (i * routine.frequencyHours!));
+          
+          if (i > 0 && routine.frequencyHours) {
+            start.setHours(start.getHours() + (i * routine.frequencyHours));
+            end.setHours(end.getHours() + (i * routine.frequencyHours));
           }
+
           expandedList.push({ 
             ...routine, 
-            id: isMultiHit ? `${routine.id}-v${i}` : routine.id, 
+            id: `${routine.id}-idx-${i}`, 
+            originalId: routine.id,
             startTime: start, 
             endTime: end, 
             instanceIndex: i, 
@@ -172,18 +169,22 @@ export default function CalendarMonthView() {
 
   return (
     <View style={[styles.setupContainer, { flex: 1, paddingTop: insets.top }]}>
-      {/* Header */}
       <View style={styles.calendarHeaderRow}>
         <Pressable onPress={() => router.push('/calendar/year')} style={({ pressed }) => [getPressedStyle(pressed), styles.glassPill]}>
           <Ionicons name="chevron-back" size={20} color={colors.text} />
           <Text style={{ color: colors.text, fontSize: 17 }}>{yearLabel}</Text>
         </Pressable>
         <View style={styles.glassPill}>
-          <Ionicons name="settings-outline" size={22} color={colors.text} />
-          <View style={styles.pillDivider} />
-          <Ionicons name="search-outline" size={22} color={colors.text} />
-          <View style={styles.pillDivider} />
-          <Ionicons name="add" size={26} color={colors.text} />
+            <Pressable 
+                onPress={() => router.push('/settings')}
+                style={({ pressed }) => getPressedStyle(pressed)}
+            >
+                <Ionicons name="settings-outline" size={22} color={colors.text} />
+            </Pressable>
+            <View style={styles.pillDivider} />
+            <Ionicons name="search-outline" size={22} color={colors.text} />
+            <View style={styles.pillDivider} />
+            <Ionicons name="add" size={26} color={colors.text} />
         </View>
       </View>
 
@@ -193,7 +194,6 @@ export default function CalendarMonthView() {
         </View>
       )}
 
-      {/* Calendar Strip */}
       <View onTouchStart={onTouchStart} onTouchEnd={onTouchEnd} style={{ paddingHorizontal: 5 }}>
         <Calendar
           key={`${currentMonth}-${colors.isDark}-${systemToday}`}
@@ -221,7 +221,6 @@ export default function CalendarMonthView() {
         />
       </View>
 
-      {/* Routine List */}
       <FlatList
         data={displayRoutines}
         keyExtractor={(item) => item.id}
@@ -246,7 +245,6 @@ export default function CalendarMonthView() {
         ListEmptyComponent={<Text style={{ color: colors.mutedText, textAlign: 'center', marginTop: 20 }}>No Routines</Text>}
       />
 
-      {/* Footer */}
       <View style={[styles.calendarFooter, { paddingBottom: Math.max(insets.bottom, 20) }]}>
         <Pressable onPress={() => handleDatePress(getLocalTodayString())} style={styles.glassPill}>
           <Text style={{ color: colors.text, fontSize: 17, paddingHorizontal: 20 }}>Today</Text>
