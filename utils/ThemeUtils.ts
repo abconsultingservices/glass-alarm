@@ -329,6 +329,56 @@ export class ThemeUtils {
                 alignItems: 'center',
                 paddingHorizontal: 20,
             },
+            // Modal Styles
+            modalHeader: {
+                flexDirection: 'row',
+                alignItems: 'center',
+                justifyContent: 'space-between',
+                paddingHorizontal: 20,
+                height: 60,
+                marginBottom: 10,
+            },
+            modalTitle: {
+                fontSize: 17,
+                fontWeight: '600',
+                color: colors.text,
+            },
+            circularButton: {
+                width: 32,
+                height: 32,
+                borderRadius: 16,
+                backgroundColor: colors.glassBorder, // Translucent effect
+                justifyContent: 'center',
+                alignItems: 'center',
+            },
+            segmentContainer: {
+                paddingHorizontal: 20,
+                marginBottom: 25,
+            },
+            segmentBackground: {
+                flexDirection: 'row',
+                backgroundColor: colors.glassBorder,
+                borderRadius: 8,
+                padding: 2,
+                height: 34,
+            },
+            segmentItem: {
+                flex: 1,
+                justifyContent: 'center',
+                alignItems: 'center',
+                borderRadius: 6,
+            },
+            segmentItemActive: {
+                backgroundColor: colors.glassBackground, // Or a slightly lighter grey
+                shadowColor: '#000',
+                shadowOffset: { width: 0, height: 1 },
+                shadowOpacity: 0.1,
+                shadowRadius: 1,
+            },
+            segmentText: {
+                fontSize: 13,
+                color: colors.text,
+            }
         });
     }
 }
