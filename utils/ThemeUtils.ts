@@ -53,7 +53,7 @@ export class ThemeUtils {
             placeholderText: this.getOpacityColor(active.text, 0.25), // Lightened for Liquid Glass
             
             // Glass & Borders
-            glassBackground: this.getOpacityColor(active.text, 0.12),
+            glassBackground: active.component,
             glassBorder: active.border,
             borderMuted: this.getOpacityColor(active.text, 0.05),
             
@@ -117,11 +117,11 @@ export class ThemeUtils {
                 fontFamily: systemFont,
                 flexDirection: 'row',
                 alignItems: 'center',
-                backgroundColor: colors.glassBackground,
+                backgroundColor: colors.insetGroupBackground, //glassBackground,
                 borderRadius: 35,
                 height: 42,
                 marginBottom: 16,
-                borderWidth: 1,
+                borderWidth: Platform.OS === 'ios' ? 0 : 1,
                 borderColor: colors.glassBorder,
                 overflow: 'hidden',
             },

@@ -75,8 +75,14 @@ export default function RootLayout() {
         }
         [data-glass-input="true"]::placeholder {
           color: ${colors.placeholderText} !important;
+          opacity: 1 !important; /* Forces the browser to use our exact opacity from getColors */
+          font-weight: 400 !important;     /* Matches the light iOS placeholder weight */
+           -webkit-text-fill-color: ${colors.placeholderText}  !important;
+        }
+        [data-glass-input="true"]::-webkit-input-placeholder {
+          color: ${colors.placeholderText}  !important;
           opacity: 1 !important; 
-          font-weight: 500 !important;
+          font-weight: 400 !important;     /* Matches the light iOS placeholder weight */
         }
       `;
       document.head.appendChild(style);

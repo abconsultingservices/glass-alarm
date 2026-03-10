@@ -1,5 +1,5 @@
 import React from 'react';
-import { View, Text, TextInput, Pressable, ScrollView, Platform } from 'react-native';
+import { View, Text, TextInput, Pressable, ScrollView, Platform, StyleSheet } from 'react-native';
 import { useRouter } from 'expo-router';
 import { useThemedStyles } from '../hooks/useThemedStyles';
 import { validateValue, ValidationRule } from '../utils/ValidationEngine';
@@ -64,19 +64,16 @@ export const GlassFormRenderer = ({ schema, form, setForm, errors, setErrors }: 
 
     return (
         <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={{ paddingBottom: 120 }}>
-
-            {/* Inject CSS for Web Placeholder Color */}
-            {Platform.OS === 'web' && (
-                <style dangerouslySetInnerHTML={{ __html: `
-                    input::placeholder { color: ${colors.placeholderText} !important; opacity: 1; font-weight: 300; }
-                `}} />
-            )}
+            {/* ULTIMATE WEB PLACEHOLDER FIX: 
+               Injecting a specific CSS rule that targets all placeholder variants 
+               to ensure the browser doesn't override with high-contrast defaults.
+            */}
             
             {schema.map((section, sIdx) => (
                 <View key={`section-${sIdx}`} style={{ marginBottom: 32 }}>
-                    {section.label && (
+                    {section.label ? (
                         <Text style={styles.fieldGroupTitle}>{section.label}</Text>
-                    )}
+                    ) : null}
 
                     <View style={section.sectionType === 'insetGroup' ? styles.insetGroup : null}>
                         {section.fields.map((field, fIdx) => {
@@ -123,84 +120,77 @@ export const GlassFormRenderer = ({ schema, form, setForm, errors, setErrors }: 
                                                 >
                                                     {form[field.key] || 'Not set'}
                                                 </Text>
-                                                {field.destination && (
+                                                {field.destination ? (
                                                     <Ionicons name="chevron-forward" size={16} color={colors.mutedText} style={{ opacity: 0.5 }} />
-                                                )}
+                                                ) : null}
                                             </View>
                                         </Pressable>
-                                        {!isLast && section.sectionType === 'insetGroup' && <View style={styles.divider} />}
+                                        {!isLast && section.sectionType === 'insetGroup' ? <View style={styles.divider} /> : null}
                                     </View>
                                 );
                             }
 
-                            const inputMarkup = (
-                                <View style={isPill 
-                                    ? [styles.inputContainer, hasError && { borderColor: colors.error }] 
-                                    : [styles.inputRow, { paddingRight: 8 }] // Added padding for the icon
-                                }>
-                                    <View style={styles.inputStack}>
-                                        <TextInput
-                                            style={[styles.inputField, !isPill && { paddingHorizontal: 16 }]}
-                                            value={form[field.key] ?? ''}
-                                            placeholder={field.label}
-                                            placeholderTextColor={colors.placeholderText}
-                                            onChangeText={(t) => handleUpdate(field.key, t, field.validation, field.overrideFilter, field.type)}
-                                            secureTextEntry={field.type === 'password'}
-                                            keyboardType={
-                                                field.type === 'email' ? 'email-address' : 
-                                                field.type === 'phone' ? 'phone-pad' : 
-                                                field.type === 'url' ? 'url' : 'default'
-                                            }
-                                            {...cleanConfig}
-                                            dataSet={{ 'glass-input': 'true' }}
-                                        />
-                                        {hasError ? (
-                                            <Text style={styles.errorSubtext}>{errors[field.key]}</Text>
-                                        ) : field.subtext ? (
-                                            <Text style={[styles.errorSubtext, { color: colors.mutedText }]}>
-                                                {field.subtext}
-                                            </Text>
+                            return (
+                                <View key={field.key}>
+                                    <View style={isPill 
+                                        ? [styles.inputContainer, hasError && { borderColor: colors.error }] 
+                                        : [styles.inputRow, { position: 'relative' }]
+                                    }>
+                                        <View style={styles.inputStack}>
+                                            <TextInput
+                                                style={[
+                                                    styles.inputField, 
+                                                    !isPill && { paddingRight: 48 }
+                                                ]}
+                                                value={form[field.key] ?? ''}
+                                                placeholder={field.label}
+                                                placeholderTextColor={colors.placeholderText} // Critical for Native
+                                                onChangeText={(t) => handleUpdate(field.key, t, field.validation, field.overrideFilter, field.type)}
+                                                secureTextEntry={field.type === 'password'}
+                                                keyboardType={
+                                                    field.type === 'email' ? 'email-address' : 
+                                                    field.type === 'phone' ? 'phone-pad' : 
+                                                    field.type === 'url' ? 'url' : 'default'
+                                                }
+                                                {...cleanConfig}
+                                                dataSet={{ 'glass-input': 'true' }}
+                                            />
+                                            {hasError ? (
+                                                <Text style={[styles.errorSubtext, !isPill && { marginLeft: 16 }]}>
+                                                    {errors[field.key]}
+                                                </Text>
+                                            ) : null}
+                                        </View>
+                                        
+                                        {!hasError && (form[field.key] && form[field.key].length > 0) ? (
+                                            (Platform.OS === 'ios' && field.config?.clearButtonMode === 'while-editing') ? null : (
+                                                <Pressable 
+                                                    onPress={() => handleUpdate(field.key, '', field.validation)}
+                                                    style={({ pressed }) => [
+                                                        getPressedStyle(pressed),
+                                                        { 
+                                                            position: 'absolute', 
+                                                            right: isPill ? 12 : 16, 
+                                                            top: '50%', 
+                                                            marginTop: -12,
+                                                            padding: 4 
+                                                        }
+                                                    ]}
+                                                >
+                                                    <Ionicons name="close-circle" size={18} color={colors.placeholderText} />
+                                                </Pressable>
+                                            )
                                         ) : null}
                                     </View>
                                     
-                                    {hasError ? (
-                                        <View style={styles.warningIcon}>
-                                            <Text style={{ fontSize: 20 }}>⚠️</Text>
-                                        </View>
-                                    ) : (form[field.key] && form[field.key].length > 0) ? (
-                                        (Platform.OS === 'ios' && field.config?.clearButtonMode === 'while-editing') ? null : (
-                                            <Pressable 
-                                                onPress={() => handleUpdate(field.key, '', field.validation)}
-                                                style={({ pressed }) => [
-                                                    styles.clearIcon, 
-                                                    getPressedStyle(pressed),
-                                                    { padding: 8 } // Native hit box size
-                                                ]}
-                                            >
-                                                <Ionicons name="close-circle" size={18} color={colors.placeholderText} />
-                                            </Pressable>
-                                        )
-                                    ) : null}
-                                </View>
-                            );
-
-                            return (
-                                <View key={field.key}>
-                                    {isPill ? (
-                                        <View style={{ marginBottom: 12 }}>{inputMarkup}</View>
-                                    ) : (
-                                        <>
-                                            {inputMarkup}
-                                            {!isLast && <View style={styles.divider} />}
-                                        </>
-                                    )}
+                                    {!isLast && section.sectionType === 'insetGroup' ? <View style={styles.divider} /> : null}
                                 </View>
                             );
                         })}
                     </View>
-                    {section.footer && (
+                    {section.footer ? (
                         <Text style={styles.groupFootnote}>{section.footer}</Text>
-                    )}
+                    ) : null}
                 </View>
             ))}
         </ScrollView>
