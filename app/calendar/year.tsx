@@ -1,5 +1,5 @@
 import React, { useState, useMemo, useEffect, useRef, useCallback, memo } from 'react';
-import { View, Text, Pressable, FlatList, StyleSheet, Dimensions, Platform } from 'react-native';
+import { View, Text, Pressable, FlatList, StyleSheet, Dimensions, Platform, Animated } from 'react-native';
 import { useRouter, useFocusEffect } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { useThemedStyles } from '../../hooks/useThemedStyles';
@@ -24,7 +24,6 @@ const MiniMonth = memo(({ year, monthIndex, systemToday, colors, onPress }: any)
   const daysInMonth = new Date(year, monthIndex + 1, 0).getDate();
   const firstDay = new Date(year, monthIndex, 1).getDay();
 
-  // Extract system today parts for comparison
   const [sYear, sMonth, sDay] = systemToday.split('-').map(Number);
   const isCurrentMonth = year === sYear && monthIndex === (sMonth - 1);
 
@@ -72,10 +71,18 @@ export default function CalendarYearView() {
     return new Date(now.getTime() - offset).toISOString().split('T')[0];
   };
 
+  // --- GLASS ANIMATION SETUP ---
+  const scrollY = useRef(new Animated.Value(0)).current;
+
+  const glassOpacity = scrollY.interpolate({
+    inputRange: [0, 50],
+    outputRange: [0.9, 0.65],
+    extrapolate: 'clamp',
+  });
+
   const [systemToday, setSystemToday] = useState(getLocalTodayString());
   const currentYearNum = useMemo(() => parseInt(systemToday.split('-')[0]), [systemToday]);
 
-  // --- SYNC ON FOCUS ---
   useFocusEffect(
     useCallback(() => {
       const freshToday = getLocalTodayString();
@@ -114,7 +121,6 @@ export default function CalendarYearView() {
   }), []);
 
   const handleMonthPress = useCallback(async (year: number, monthIndex: number) => {
-    // Check time on interaction
     const freshToday = getLocalTodayString();
     setSystemToday(freshToday);
 
@@ -145,10 +151,11 @@ export default function CalendarYearView() {
   ), [colors, systemToday, currentYearNum, handleMonthPress]);
 
   return (
-    <View style={[styles.setupContainer, { flex: 1, paddingTop: insets.top }]}>
+    <View style={{ flex: 1, backgroundColor: colors.background }}>
       
+      {/* --- TOP FIXED HEADER --- */}
       <View style={[styles.calendarHeaderRow, localStyles.floatingHeader, { top: insets.top + 10 }]}>
-        <View style={styles.glassPill}>
+        <View style={styles.headerPill}>
             <Pressable onPress={() => router.replace('/settings')} style={({ pressed }) => getPressedStyle(pressed)}>
               <Ionicons name="settings-outline" size={22} color={colors.text} />
             </Pressable>
@@ -156,30 +163,41 @@ export default function CalendarYearView() {
             <Ionicons name="search-outline" size={22} color={colors.text} />
             <View style={styles.pillDivider} />
             <Pressable 
-            onPress={() => router.push('/calendar/add-routine')}
-            style={({ pressed }) => getPressedStyle(pressed)}
+              onPress={() => router.push('/calendar/add-routine')}
+              style={({ pressed }) => getPressedStyle(pressed)}
             >
                 <Ionicons name="add" size={26} color={colors.text} />
             </Pressable>
         </View>
       </View>
 
-      <FlatList
+      <Animated.FlatList
         ref={flatListRef}
         data={YEARS_DATA}
         renderItem={renderYearItem}
         keyExtractor={(item) => item.toString()}
         getItemLayout={getItemLayout}
         showsVerticalScrollIndicator={false}
-        contentContainerStyle={{ paddingTop: 60, paddingHorizontal: 16, paddingBottom: 150 }}
+        onScroll={Animated.event(
+            [{ nativeEvent: { contentOffset: { y: scrollY } } }],
+            { useNativeDriver: false }
+        )}
+        scrollEventThrottle={16}
+        contentContainerStyle={{ paddingTop: insets.top + 60, paddingHorizontal: 16, paddingBottom: 150 }}
         removeClippedSubviews={Platform.OS !== 'web'}
         initialNumToRender={2}
         windowSize={3}
-        // Force refresh if system date changes
         extraData={systemToday}
       />
 
-      <View style={[styles.calendarFooter, { paddingBottom: Math.max(insets.bottom, 20) }]}>
+      {/* --- FLOATING ACTION LAYER --- */}
+      <Animated.View style={[
+        localStyles.floatingFooter, 
+        { 
+          bottom: insets.bottom > 0 ? insets.bottom - 16 : 4,
+          opacity: glassOpacity 
+        }
+      ]}>
         <Pressable 
           onPress={() => {
             const freshToday = getLocalTodayString();
@@ -190,19 +208,33 @@ export default function CalendarYearView() {
               flatListRef.current?.scrollToIndex({ index, animated: true, viewPosition: 0 });
             }
           }} 
-          style={({ pressed }) => [getPressedStyle(pressed), styles.glassPill, { paddingHorizontal: 22 }]}
+          style={({ pressed }) => [
+            getPressedStyle(pressed), 
+            styles.glassPill, 
+            { backgroundColor: colors.glassBackground, paddingHorizontal: 22, height: 44 }
+          ]}
         >
           <Text style={{ color: colors.text, fontSize: 17, fontWeight: '500' }}>Today</Text>
         </Pressable>
 
         <Pressable 
           onPress={() => router.push('/routines')} 
-          style={({ pressed }) => [getPressedStyle(pressed), styles.glassPill, { paddingHorizontal: 16, flexDirection: 'row', gap: 8 }]}
+          style={({ pressed }) => [
+            getPressedStyle(pressed), 
+            styles.glassPill, 
+            { 
+              backgroundColor: colors.glassBackground, 
+              paddingHorizontal: 16, 
+              flexDirection: 'row', 
+              gap: 8, 
+              height: 44 
+            }
+          ]}
         >
           <Ionicons name="calendar-outline" size={20} color={colors.text} />
           <Text style={{ color: colors.text, fontSize: 17, fontWeight: '500' }}>Routines</Text>
         </Pressable>
-      </View>
+      </Animated.View>
     </View>
   );
 }
@@ -216,5 +248,14 @@ const localStyles = StyleSheet.create({
   daysGrid: { flexDirection: 'row', flexWrap: 'wrap' },
   dayCell: { width: '14.28%', height: 16, alignItems: 'center', justifyContent: 'center' },
   dayIndicator: { width: 15, height: 15, borderRadius: 7.5, alignItems: 'center', justifyContent: 'center' },
-  dayText: { fontSize: 8, fontWeight: '500' }
+  dayText: { fontSize: 8, fontWeight: '500' },
+  floatingFooter: {
+    position: 'absolute',
+    left: 20,
+    right: 20,
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    zIndex: 10,
+  }
 });
