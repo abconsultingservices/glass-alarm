@@ -1,5 +1,5 @@
-import React, { useState, useMemo, useEffect, useCallback } from 'react';
-import { View, Text, Pressable, Platform, FlatList, Switch, StyleSheet, Dimensions } from 'react-native';
+import React, { useState, useMemo, useEffect, useCallback, useRef } from 'react';
+import { View, Text, Pressable, Platform, FlatList, Switch, StyleSheet, Dimensions, Animated } from 'react-native';
 import { Calendar } from 'react-native-calendars'; 
 import { useRouter, useFocusEffect } from 'expo-router'; 
 import { Ionicons } from '@expo/vector-icons';
@@ -16,6 +16,16 @@ export default function CalendarMonthView() {
   const insets = useSafeAreaInsets();
   const { colors, styles, getPressedStyle } = useThemedStyles();
   const isWeb = Platform.OS === 'web';
+
+  // --- GLASS ANIMATION SETUP ---
+  const scrollY = useRef(new Animated.Value(0)).current;
+
+  // Logic: 1 (Solid colors.glassBackground) at top, fades to 0.75 glassy transparency on scroll
+  const glassOpacity = scrollY.interpolate({
+    inputRange: [0, 50],
+    outputRange: [.9, 0.65],
+    extrapolate: 'clamp',
+  });
 
   const getLocalTodayString = () => {
     const now = new Date();
@@ -133,8 +143,12 @@ export default function CalendarMonthView() {
           const hasException = exceptions.some(ex => 
             ex.routineId === routine.id && ex.date === selectedDate && ex.instanceIndex === i
           );
-          const start = new Date(routine.startTime);
-          const end = new Date(routine.endTime);
+          
+          const baseStart = routine.startTime ? new Date(routine.startTime) : new Date();
+          const baseEnd = routine.endTime ? new Date(routine.endTime) : new Date();
+          
+          const start = new Date(baseStart);
+          const end = new Date(baseEnd);
           
           if (i > 0 && routine.frequencyHours) {
             start.setHours(start.getHours() + (i * routine.frequencyHours));
@@ -168,67 +182,72 @@ export default function CalendarMonthView() {
   const formatTime = (date: Date) => date.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit', hour12: true });
 
   return (
-    <View style={[styles.setupContainer, { flex: 1, paddingTop: insets.top }]}>
-      <View style={styles.calendarHeaderRow}>
-        <Pressable onPress={() => router.push('/calendar/year')} style={({ pressed }) => [getPressedStyle(pressed), styles.glassPill]}>
+    <View style={{ flex: 1, backgroundColor: colors.background }}>
+      {/* --- TOP FIXED HEADER --- */}
+      <View style={[styles.calendarHeaderRow, { paddingTop: insets.top, height: 54 + insets.top}]}>
+        <Pressable onPress={() => router.push('/calendar/year')} style={({ pressed }) => [getPressedStyle(pressed), styles.headerPill]}>
           <Ionicons name="chevron-back" size={20} color={colors.text} />
           <Text style={{ color: colors.text, fontSize: 17 }}>{yearLabel}</Text>
         </Pressable>
-        <View style={styles.glassPill}>
-            <Pressable 
-                onPress={() => router.push('/settings')}
-                style={({ pressed }) => getPressedStyle(pressed)}
-            >
+        <View style={styles.headerPill}>
+            <Pressable onPress={() => router.push('/settings')} style={({ pressed }) => getPressedStyle(pressed)}>
                 <Ionicons name="settings-outline" size={22} color={colors.text} />
             </Pressable>
             <View style={styles.pillDivider} />
             <Ionicons name="search-outline" size={22} color={colors.text} />
             <View style={styles.pillDivider} />
-            <Pressable 
-            onPress={() => router.push('/calendar/add-routine')}
-            style={({ pressed }) => getPressedStyle(pressed)}
-            >
+            <Pressable onPress={() => router.push('/calendar/add-routine')} style={({ pressed }) => getPressedStyle(pressed)}>
                 <Ionicons name="add" size={26} color={colors.text} />
             </Pressable>
         </View>
       </View>
 
-      {!isWeb && (
-        <View style={localStyles.iosHeaderContainer}>
-          <Text style={[styles.largeMonthLabel, { color: colors.text, textAlign: 'left' }]}>{monthName}</Text>
-        </View>
-      )}
-
-      <View onTouchStart={onTouchStart} onTouchEnd={onTouchEnd} style={{ paddingHorizontal: 5 }}>
-        <Calendar
-          key={`${currentMonth}-${colors.isDark}-${systemToday}`}
-          current={currentMonth}
-          hideArrows={true}
-          renderHeader={() => (
-            isWeb ? (
-              <View style={localStyles.webHeaderJustified}>
-                <Pressable onPress={() => handleMonthChange('prev')}><Ionicons name="chevron-back" size={20} color={colors.text} /></Pressable>
-                <Text style={[localStyles.webMonthLabel, { color: colors.text }]}>{monthName}</Text>
-                <Pressable onPress={() => handleMonthChange('next')}><Ionicons name="chevron-forward" size={20} color={colors.text} /></Pressable>
-              </View>
-            ) : null
-          )}
-          onDayPress={(day) => handleDatePress(day.dateString)}
-          markedDates={markedDates}
-          theme={{
-            calendarBackground: 'transparent',
-            dayTextColor: colors.text,
-            todayTextColor: colors.error,
-            textSectionTitleColor: colors.mutedText,
-            selectedDayBackgroundColor: colors.text, 
-            selectedDayTextColor: colors.background,
-          }}
-        />
-      </View>
-
       <FlatList
         data={displayRoutines}
         keyExtractor={(item) => item.id}
+        showsVerticalScrollIndicator={false}
+        onScroll={Animated.event(
+            [{ nativeEvent: { contentOffset: { y: scrollY } } }],
+            { useNativeDriver: false }
+        )}
+        scrollEventThrottle={16}
+        contentContainerStyle={{ paddingHorizontal: 16, paddingBottom: 140 }}
+        ListHeaderComponent={
+          <View onTouchStart={onTouchStart} onTouchEnd={onTouchEnd}>
+            {!isWeb && (
+              <View style={localStyles.iosHeaderContainer}>
+                <Text style={styles.largeMonthLabel}>{monthName}</Text>
+              </View>
+            )}
+            <Calendar
+              key={`${currentMonth}-${colors.isDark}-${systemToday}`}
+              current={currentMonth}
+              hideArrows={true}
+              renderHeader={() => (
+                isWeb ? (
+                  <View style={localStyles.webHeaderJustified}>
+                    <Pressable onPress={() => handleMonthChange('prev')}><Ionicons name="chevron-back" size={20} color={colors.text} /></Pressable>
+                    <Text style={[localStyles.webMonthLabel, { color: colors.text }]}>{monthName}</Text>
+                    <Pressable onPress={() => handleMonthChange('next')}><Ionicons name="chevron-forward" size={20} color={colors.text} /></Pressable>
+                  </View>
+                ) : null
+              )}
+              onDayPress={(day) => handleDatePress(day.dateString)}
+              markedDates={markedDates}
+              theme={{
+                calendarBackground: 'transparent',
+                dayTextColor: colors.text,
+                todayTextColor: colors.error,
+                textSectionTitleColor: colors.mutedText,
+                selectedDayBackgroundColor: colors.text, 
+                selectedDayTextColor: colors.background,
+                'stylesheet.calendar.main': {
+                    container: { paddingLeft: 0, paddingRight: 0, backgroundColor: 'transparent' }
+                }
+              }}
+            />
+          </View>
+        }
         renderItem={({ item }) => (
           <View style={[styles.insetGroup, { marginBottom: 12, padding: 16, flexDirection: 'row', alignItems: 'center' }]}>
             <View style={{ flex: 1, opacity: item.isInstanceEnabled ? 1 : 0.4 }}>
@@ -250,21 +269,71 @@ export default function CalendarMonthView() {
         ListEmptyComponent={<Text style={{ color: colors.mutedText, textAlign: 'center', marginTop: 20 }}>No Routines</Text>}
       />
 
-      <View style={[styles.calendarFooter, { paddingBottom: Math.max(insets.bottom, 20) }]}>
-        <Pressable onPress={() => handleDatePress(getLocalTodayString())} style={styles.glassPill}>
-          <Text style={{ color: colors.text, fontSize: 17, paddingHorizontal: 20 }}>Today</Text>
+      {/* --- FLOATING ACTION LAYER --- */}
+      <Animated.View style={[
+        localStyles.floatingFooter, 
+        { 
+            // Reduced from 20 to 8 to pull it closer to the bottom viewport edge
+            bottom: insets.bottom > 0 ? insets.bottom-16 : 4, 
+            opacity: glassOpacity 
+        }
+      ]}>
+        <Pressable 
+          onPress={() => handleDatePress(getLocalTodayString())} 
+          style={({ pressed }) => [
+            styles.glassPill, 
+            getPressedStyle(pressed), 
+            { 
+              backgroundColor: colors.glassBackground, 
+              paddingHorizontal: 24, 
+              height: 44,
+              // Web-specific backdrop blur fallback
+              ...Platform.select({
+                web: { backdropFilter: 'blur(20px) saturate(180%)' }
+              })
+            }
+          ]}
+        >
+          <Text style={{ color: colors.text, fontSize: 17, fontWeight: '600' }}>Today</Text>
         </Pressable>
-        <Pressable onPress={() => router.push('/routines')} style={[styles.glassPill, { flexDirection: 'row', gap: 8, paddingHorizontal: 15 }]}>
+
+        <Pressable 
+          onPress={() => router.push('/routines')} 
+          style={({ pressed }) => [
+            styles.glassPill, 
+            getPressedStyle(pressed), 
+            { 
+              backgroundColor: colors.glassBackground, 
+              flexDirection: 'row', 
+              gap: 8, 
+              paddingHorizontal: 20, 
+              height: 44,
+              ...Platform.select({
+                web: { backdropFilter: 'blur(20px) saturate(180%)' }
+              })
+            }
+          ]}
+        >
           <Ionicons name="calendar-outline" size={20} color={colors.text} />
-          <Text style={{ color: colors.text, fontSize: 17 }}>Routines</Text>
+          <Text style={{ color: colors.text, fontSize: 17, fontWeight: '600' }}>Routines</Text>
         </Pressable>
-      </View>
+      </Animated.View>
     </View>
   );
 }
 
 const localStyles = StyleSheet.create({
-  iosHeaderContainer: { paddingHorizontal: 16, marginTop: 10, marginBottom: 5 },
+  iosHeaderContainer: { paddingHorizontal: 4, marginTop: 10, marginBottom: 5 },
   webHeaderJustified: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', width: SCREEN_WIDTH - 40, marginHorizontal: -15, paddingHorizontal: 10, marginVertical: 10 },
-  webMonthLabel: { fontSize: 18, fontWeight: '700' }
+  webMonthLabel: { fontSize: 18, fontWeight: '700' },
+  floatingFooter: {
+    position: 'absolute',
+    left: 20,
+    right: 20,
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    zIndex: 10,
+    bottom: 0
+  }
 });
