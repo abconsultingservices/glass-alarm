@@ -5,7 +5,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { dbService } from '../../services/DatabaseService';
 import { useThemedStyles } from '../../hooks/useThemedStyles';
 import { GlassFormRenderer, Section } from '../../components/GlassFormRenderer';
-import { getInitialFormState, getInitialErrorState } from '../../utils/ValidationEngine';
+import { getInitialFormState, getInitialErrorState, validateValue } from '../../utils/ValidationEngine';
 import { Ionicons } from '@expo/vector-icons';
 
 const ADD_SCHEMA: Section[] = [
@@ -16,12 +16,12 @@ const ADD_SCHEMA: Section[] = [
                 key: 'name', 
                 label: 'Title', 
                 validation: [{ type: 'required', errorMsg: 'Required' }], 
-                config: { placeholder: 'Title', placeholderTextColor: 'rgba(255,255,255,0.3)' } 
+                config: { placeholder: 'Title' } 
             },
             { 
                 key: 'location', 
                 label: 'Location', 
-                config: { placeholder: 'Location or Video Call', placeholderTextColor: 'rgba(255,255,255,0.3)' } 
+                config: { placeholder: 'Location or Video Call' } 
             }
         ]
     },
@@ -42,7 +42,6 @@ const ADD_SCHEMA: Section[] = [
 export default function AddRoutine() {
     const router = useRouter();
     const insets = useSafeAreaInsets();
-    // Use the elevated color keys from your updated ThemeUtils
     const { styles, colors, getPressedStyle } = useThemedStyles(); 
 
     const [form, setForm] = useState(() => getInitialFormState(ADD_SCHEMA));
@@ -50,6 +49,9 @@ export default function AddRoutine() {
     const [activeTab, setActiveTab] = useState('Routine'); 
 
     const shakeAnim = useRef(new Animated.Value(0)).current;
+
+    // Derived state for error detection
+    const hasErrors = Object.values(errors).some(error => error !== null);
 
     const triggerShake = () => {
         Animated.sequence([
@@ -60,7 +62,24 @@ export default function AddRoutine() {
     };
 
     const handleSave = async () => {
-        if (!form.name || !form.startTime) {
+        // Final validation check before saving
+        const newErrors: any = {};
+        let validationFailed = false;
+
+        ADD_SCHEMA.forEach(section => {
+            section.fields.forEach(field => {
+                if (field.validation) {
+                    const errorMsg = validateValue(form[field.key], field.validation);
+                    if (errorMsg) {
+                        newErrors[field.key] = errorMsg;
+                        validationFailed = true;
+                    }
+                }
+            });
+        });
+
+        if (validationFailed) {
+            setErrors(newErrors);
             triggerShake();
             return;
         }
@@ -76,10 +95,9 @@ export default function AddRoutine() {
     };
 
     return (
-        // Changed from styles.container to styles.modalContainer to get the IC Dark Elevated background
         <View style={styles.modalContainer}>
-            {/* --- IOS NATIVE MODAL HEADER --- */}
-            <View style={[styles.modalHeader, { paddingTop: Platform.OS === 'ios' ? 12 : insets.top }]}>
+            <View style={styles.sheetHandleContainer}><View style={styles.sheetHandle} /></View>
+            <View style={[styles.modalHeader, { paddingTop: Platform.OS === 'ios' ? 0 : insets.top }]}>
                 <Pressable 
                     onPress={() => router.back()} 
                     style={({ pressed }) => [styles.circularButton, getPressedStyle(pressed)]}
@@ -91,9 +109,17 @@ export default function AddRoutine() {
 
                 <Pressable 
                     onPress={handleSave} 
-                    style={({ pressed }) => [styles.circularButton, getPressedStyle(pressed)]}
+                    style={({ pressed }) => [
+                        styles.circularButton, 
+                        getPressedStyle(pressed),
+                        hasErrors && { backgroundColor: 'rgba(255, 69, 58, 0.15)' } // Subtle red glow on error
+                    ]}
                 >
-                    <Ionicons name="checkmark" size={20} color={colors.text} />
+                    <Ionicons 
+                        name="checkmark" 
+                        size={20} 
+                        color={hasErrors ? colors.error : colors.text} 
+                    />
                 </Pressable>
             </View>
 
@@ -120,7 +146,6 @@ export default function AddRoutine() {
                 </View>
             </View>
 
-            {/* Content with proper padding to match iOS inset behavior */}
             <ScrollView 
                 contentContainerStyle={{ paddingHorizontal: 16, paddingBottom: 100 }}
                 showsVerticalScrollIndicator={false}

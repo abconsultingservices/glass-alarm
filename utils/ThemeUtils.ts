@@ -88,6 +88,27 @@ export class ThemeUtils {
                     web: { padding: 16 }
                 })
             },
+            // --- NEW: NATIVE SHEET UI ---
+            sheetHandleContainer: {
+                width: '100%',
+                alignItems: 'center',
+                paddingTop: 8,
+                paddingBottom: 4,
+            },
+            sheetHandle: {
+                width: 36,
+                height: 5,
+                borderRadius: 2.5,
+                backgroundColor: colors.isDark ? 'rgba(255,255,255,0.15)' : 'rgba(0,0,0,0.1)',
+            },
+
+            modalHeader: {
+                flexDirection: 'row',
+                alignItems: 'center',
+                justifyContent: 'space-between',
+                paddingHorizontal: 16,
+                height: 56,
+            },
             // --- MODAL / SHEET SPECIFIC CONTAINER ---
             setupContainer: {
                 flex: 1,

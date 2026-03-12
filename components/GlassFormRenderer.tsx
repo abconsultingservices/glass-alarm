@@ -64,11 +64,6 @@ export const GlassFormRenderer = ({ schema, form, setForm, errors, setErrors }: 
 
     return (
         <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={{ paddingBottom: 120 }}>
-            {/* ULTIMATE WEB PLACEHOLDER FIX: 
-               Injecting a specific CSS rule that targets all placeholder variants 
-               to ensure the browser doesn't override with high-contrast defaults.
-            */}
-            
             {schema.map((section, sIdx) => (
                 <View key={`section-${sIdx}`} style={{ marginBottom: 32 }}>
                     {section.label ? (
@@ -129,63 +124,7 @@ export const GlassFormRenderer = ({ schema, form, setForm, errors, setErrors }: 
                                     </View>
                                 );
                             }
-
-                            return (
-                                <View key={field.key}>
-                                    <View style={isPill 
-                                        ? [styles.inputContainer, hasError && { borderColor: colors.error }] 
-                                        : [styles.inputRow, { position: 'relative' }]
-                                    }>
-                                        <View style={styles.inputStack}>
-                                            <TextInput
-                                                style={[
-                                                    styles.inputField, 
-                                                    !isPill && { paddingRight: 48 }
-                                                ]}
-                                                value={form[field.key] ?? ''}
-                                                placeholder={field.label}
-                                                placeholderTextColor={colors.placeholderText} // Critical for Native
-                                                onChangeText={(t) => handleUpdate(field.key, t, field.validation, field.overrideFilter, field.type)}
-                                                secureTextEntry={field.type === 'password'}
-                                                keyboardType={
-                                                    field.type === 'email' ? 'email-address' : 
-                                                    field.type === 'phone' ? 'phone-pad' : 
-                                                    field.type === 'url' ? 'url' : 'default'
-                                                }
-                                                {...cleanConfig}
-                                                dataSet={{ 'glass-input': 'true' }}
-                                            />
-                                            {hasError ? (
-                                                <Text style={[styles.errorSubtext, !isPill && { marginLeft: 16 }]}>
-                                                    {errors[field.key]}
-                                                </Text>
-                                            ) : null}
-                                        </View>
-                                        
-                                        {!hasError && (form[field.key] && form[field.key].length > 0) ? (
-                                            (Platform.OS === 'ios' && field.config?.clearButtonMode === 'while-editing') ? null : (
-                                                <Pressable 
-                                                    onPress={() => handleUpdate(field.key, '', field.validation)}
-                                                    style={({ pressed }) => [
-                                                        getPressedStyle(pressed),
-                                                        { 
-                                                            position: 'absolute', 
-                                                            right: isPill ? 12 : 16, 
-                                                            top: '50%', 
-                                                            marginTop: -12,
-                                                            padding: 4 
-                                                        }
-                                                    ]}
-                                                >
-                                                    <Ionicons name="close-circle" size={18} color={colors.placeholderText} />
-                                                </Pressable>
-                                            )
-                                        ) : null}
-                                    </View>
-                                    
-                                    {!isLast && section.sectionType === 'insetGroup' ? <View style={styles.divider} /> : null}
-                                </View>
-                            );
+                            return (<View key={field.key} style={{ marginBottom: isPill ? 16 : 0 }}><View style={isPill ? [styles.inputContainer, hasError && { borderColor: colors.error, borderWidth: 1.5 }] : [styles.inputRow, { position: 'relative' }]}><View style={{ flex: 1, justifyContent: 'center' }}><TextInput style={[styles.inputField, !isPill && { paddingRight: 48 }]} value={form[field.key] ?? ''} placeholder={field.label} placeholderTextColor={colors.placeholderText} onChangeText={(t) => handleUpdate(field.key, t, field.validation, field.overrideFilter, field.type)} secureTextEntry={field.type === 'password'} keyboardType={field.type === 'email' ? 'email-address' : field.type === 'phone' ? 'phone-pad' : field.type === 'url' ? 'url' : 'default'} {...cleanConfig} dataSet={{ 'glass-input': 'true' }} /></View><View style={{position: 'absolute', right: isPill ? 12 : 16, flexDirection: 'row', alignItems: 'center'}}>{(form[field.key] && form[field.key].length > 0) ? (<Pressable onPress={() => handleUpdate(field.key, '', field.validation)} style={({ pressed }) => [getPressedStyle(pressed), { padding: 4 }]}><Ionicons name="close-circle" size={18} color={hasError ? colors.error : colors.placeholderText} /></Pressable>) : null}</View></View>{hasError ? (<Text style={{ color: colors.error, fontSize: 12, marginTop: 4, marginLeft: isPill ? 4 : 16, fontWeight: '500' }}>{errors[field.key]}</Text>) : null}{!isLast && section.sectionType === 'insetGroup' ? <View style={styles.divider} /> : null}</View>);
                         })}
                     </View>
                     {section.footer ? (
