@@ -189,7 +189,7 @@ export default function CalendarMonthView() {
           <Ionicons name="chevron-back" size={20} color={colors.text} />
           <Text style={{ color: colors.text, fontSize: 17 }}>{yearLabel}</Text>
         </Pressable>
-        <View style={styles.headerPill}>
+        <View style={styles.glassPill}>
             <Pressable onPress={() => router.push('/settings')} style={({ pressed }) => getPressedStyle(pressed)}>
                 <Ionicons name="settings-outline" size={22} color={colors.text} />
             </Pressable>

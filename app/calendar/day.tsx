@@ -168,11 +168,11 @@ export default function DayView() {
             <Ionicons name="search-outline" size={22} color={colors.text} />
             <View style={styles.pillDivider} />
             <Pressable 
-            onPress={() => router.push('/calendar/add-routine')}
-            style={({ pressed }) => getPressedStyle(pressed)}
-            >
-                <Ionicons name="add" size={26} color={colors.text} />
-            </Pressable>
+                onPress={() => router.push('/calendar/add-routine')}
+                style={({ pressed }) => getPressedStyle(pressed)}
+                >
+                    <Ionicons name="add" size={26} color={colors.text} />
+                </Pressable>
         </View>
       </View>
 
@@ -222,10 +222,10 @@ export default function DayView() {
               <Text style={{ color: colors.text, fontSize: 17, fontWeight: '600' }}>{item.name}</Text>
               <Text style={{ color: colors.mutedText, fontSize: 13, marginTop: 2 }}>{item.repeat}</Text>
             </View>
-            <div style={{ alignItems: 'flex-end', marginRight: 12, opacity: item.isInstanceEnabled ? 1 : 0.4 }}>
+            <View style={{ alignItems: 'flex-end', marginRight: 12, opacity: item.isInstanceEnabled ? 1 : 0.4 }}>
               <Text style={{ color: colors.text, fontSize: 15, fontWeight: '500' }}>{formatTime(item.startTime)}</Text>
               <Text style={{ color: colors.mutedText, fontSize: 12 }}>to {formatTime(item.endTime)}</Text>
-            </div>
+            </View>
             <Switch 
               value={item.isInstanceEnabled} 
               onValueChange={() => handleToggleInstance(item)}
