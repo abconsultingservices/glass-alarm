@@ -1,4 +1,4 @@
-import React, { useState, useRef } from 'react';
+import React, { useState, useRef, useMemo } from 'react';
 import { View, Text, Pressable, Animated, ScrollView, Platform } from 'react-native';
 import { useRouter } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -50,8 +50,24 @@ export default function AddRoutine() {
 
     const shakeAnim = useRef(new Animated.Value(0)).current;
 
-    // Derived state for error detection
-    const hasErrors = Object.values(errors).some(error => error !== null);
+    // --- REACTIVE DERIVED STATE ---
+    const hasErrors = useMemo(() => {
+        // 1. Check for active validation error messages
+        const hasActiveErrors = Object.values(errors).some(e => e !== null && e !== undefined && e !== '');
+        
+        // 2. Defensive check for missing required data
+        // We use !! and .trim() to ensure null, undefined, and " " are all caught
+        const nameVal = form?.name || '';
+        const timeVal = form?.startTime || '';
+        
+        const isNameMissing = nameVal.trim() === '';
+        const isTimeMissing = timeVal.trim() === '';
+
+        // DEBUG: Uncomment this to see exactly what is blocking the save in your console
+        // console.log('Validation Check:', { hasActiveErrors, isNameMissing, isTimeMissing, currentName: nameVal, currentTime: timeVal });
+        
+        return hasActiveErrors || isNameMissing || isTimeMissing;
+    }, [errors, form]); // Listening to the whole form object ensures we catch every keystroke
 
     const triggerShake = () => {
         Animated.sequence([
@@ -62,9 +78,9 @@ export default function AddRoutine() {
     };
 
     const handleSave = async () => {
-        // Final validation check before saving
+        // 1. Final validation sweep
         const newErrors: any = {};
-        let validationFailed = false;
+        let hasValidationError = false;
 
         ADD_SCHEMA.forEach(section => {
             section.fields.forEach(field => {
@@ -72,18 +88,25 @@ export default function AddRoutine() {
                     const errorMsg = validateValue(form[field.key], field.validation);
                     if (errorMsg) {
                         newErrors[field.key] = errorMsg;
-                        validationFailed = true;
+                        hasValidationError = true;
                     }
                 }
             });
         });
 
-        if (validationFailed) {
+        // 2. Extra check for startTime (required for DB but not in validation schema)
+        if (!form.startTime) {
+            newErrors.startTime = 'Required';
+            hasValidationError = true;
+        }
+
+        if (hasValidationError) {
             setErrors(newErrors);
             triggerShake();
             return;
         }
 
+        // 3. Proceed with save
         const success = await dbService.createRoutine(form.name, form.duration || '30', {
             startTime: form.startTime,
             type: form.type || 'daily',
@@ -100,9 +123,11 @@ export default function AddRoutine() {
             <View style={[styles.modalHeader, { paddingTop: Platform.OS === 'ios' ? 0 : insets.top }]}>
                 <Pressable 
                     onPress={() => router.back()} 
-                    style={({ pressed }) => [styles.circularButton, getPressedStyle(pressed)]}
+                    style={({ pressed }) => [
+                        styles.circularButton, 
+                        getPressedStyle(pressed)]}
                 >
-                    <Ionicons name="close" size={20} color={colors.text} />
+                    <Ionicons name="close" size={24} color={colors.text} />
                 </Pressable>
                 
                 <Text style={styles.modalTitle}>New</Text>
@@ -112,18 +137,20 @@ export default function AddRoutine() {
                     style={({ pressed }) => [
                         styles.circularButton, 
                         getPressedStyle(pressed),
-                        hasErrors && { backgroundColor: 'rgba(255, 69, 58, 0.15)' } // Subtle red glow on error
+                        hasErrors && { 
+                            backgroundColor: 'rgba(255, 69, 58, 0.15)',
+                            borderColor: colors.error
+                         }
                     ]}
                 >
                     <Ionicons 
                         name="checkmark" 
-                        size={20} 
+                        size={24} 
                         color={hasErrors ? colors.error : colors.text} 
                     />
                 </Pressable>
             </View>
 
-            {/* --- SEGMENTED TABS (Routine | Tasks) --- */}
             <View style={styles.segmentContainer}>
                 <View style={styles.segmentBackground}>
                     {['Routine', 'Tasks'].map((tab) => (

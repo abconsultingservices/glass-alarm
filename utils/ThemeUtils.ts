@@ -27,6 +27,7 @@ export class ThemeUtils {
                 component: '#2C2C2E',      // Tertiary System Background (Inset Groups)
                 text: '#FFFFFF',
                 border: 'rgba(255, 255, 255, 0.1)',
+                elevatedBorder: 'rgba(255, 255, 255, 0.3)',
                 primary: '#0A84FF',        // iOS System Blue (Dark)
             },
             light: {
@@ -35,6 +36,7 @@ export class ThemeUtils {
                 component: '#F2F2F7',      // Secondary System Grouped (Inset Groups)
                 text: '#000000',
                 border: 'rgba(0, 0, 0, 0.05)',
+                elevatedBorder: 'rgba(0, 0, 0, 0.2)',
                 primary: '#007AFF',        // iOS System Blue (Light)
             }
         };
@@ -55,6 +57,7 @@ export class ThemeUtils {
             // Glass & Borders
             glassBackground: active.component,
             glassBorder: active.border,
+            glassBorderElevated: active.elevatedBorder,
             borderMuted: this.getOpacityColor(active.text, 0.05),
             
             // Semantic Colors
@@ -141,10 +144,18 @@ export class ThemeUtils {
                 backgroundColor: colors.insetGroupBackground, //glassBackground,
                 borderRadius: 35,
                 height: 42,
-                marginBottom: 16,
+                marginBottom: 4,
                 borderWidth: Platform.OS === 'ios' ? 0 : 1,
                 borderColor: colors.glassBorder,
                 overflow: 'hidden',
+            },
+            errorSubtext: { 
+                color: colors.error, 
+                fontSize: 12, 
+                marginTop: 2, // TIGHT spacing
+                marginLeft: 16, 
+                fontWeight: '500',
+                marginBottom: 4, // Adds space before the next element
             },
             inputField: {
                 fontFamily: systemFont,
@@ -298,9 +309,11 @@ export class ThemeUtils {
                 color: colors.text,
             },
             circularButton: {
-                width: 32,
-                height: 32,
-                borderRadius: 16,
+                width: 40,
+                height: 40,
+                borderRadius: 20,
+                borderWidth: 1,
+                borderColor: colors.glassBorderElevated,
                 backgroundColor: colors.isDark ? 'rgba(255,255,255,0.12)' : 'rgba(0,0,0,0.05)',
                 justifyContent: 'center',
                 alignItems: 'center',
@@ -337,6 +350,33 @@ export class ThemeUtils {
                 fontSize: 13,
                 fontWeight: '500',
                 color: colors.text,
+            },
+            floatingHeaderContainer: {
+                position: 'absolute',
+                top: Platform.OS === 'ios' ? 60 : 20, // Adjust for status bar
+                left: 0,
+                right: 0,
+                flexDirection: 'row',
+                justifyContent: 'space-between',
+                paddingHorizontal: 20,
+                zIndex: 100, // Vital: Keeps icons above the scrollable content
+            },
+            headerPill: {
+                flexDirection: 'row',
+                alignItems: 'center',
+                backgroundColor: ThemeUtils.getOpacityColor(colors.modalBackground, 0.7), // Glass effect
+                paddingVertical: 8,
+                paddingHorizontal: 16,
+                borderRadius: 25,
+                borderWidth: 1,
+                borderColor: colors.glassBorderElevated,
+                gap: 8,
+            },
+            headerPillText: {
+                color: colors.text,
+                fontSize: 15,
+                fontWeight: '600',
+                letterSpacing: -0.3,
             }
         });
     }
