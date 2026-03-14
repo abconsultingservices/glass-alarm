@@ -266,18 +266,28 @@ export class ThemeUtils {
             glassPill: {
                 flexDirection: 'row',
                 alignItems: 'center',
-                backgroundColor: colors.glassBackground,
                 paddingVertical: 8,
                 paddingHorizontal: 14,
                 borderRadius: 24,
                 gap: 12,
                 borderWidth: 1,
-                borderColor: colors.glassBorder,
+                borderColor: colors.glassBorderElevated,
+                ...Platform.select({
+                    web: {
+                        // For Web, we keep the CSS backdrop-filter fallback
+                        backdropFilter: 'blur(20px) saturate(180%)',
+                        backgroundColor: ThemeUtils.getOpacityColor(colors.glassBackground, 0.7),
+                        shadowColor: '#000',
+                        shadowOffset: { width: 0, height: 4 },
+                        shadowOpacity: 0.2,
+                        shadowRadius: 10,
+                    }
+                })  
             },
             pillDivider: {
                 width: 1,
                 height: 18,
-                backgroundColor: colors.glassBorder,
+                backgroundColor: 'transparent',
             },
             largeMonthLabel: {
                 fontSize: 34,
@@ -364,7 +374,7 @@ export class ThemeUtils {
             headerPill: {
                 flexDirection: 'row',
                 alignItems: 'center',
-                backgroundColor: ThemeUtils.getOpacityColor(colors.modalBackground, 0.7), // Glass effect
+                backgroundColor: ThemeUtils.getOpacityColor(colors.glassBackground, 0.7), // Glass effect
                 paddingVertical: 8,
                 paddingHorizontal: 16,
                 borderRadius: 25,

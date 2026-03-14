@@ -84,6 +84,13 @@ export default function RootLayout() {
           opacity: 1 !important; 
           font-weight: 400 !important;     /* Matches the light iOS placeholder weight */
         }
+
+        .glass-pill-web {
+          background-color: rgba(44, 44, 46, 0.7) !important; /* colors.glassBackground with transparency */
+          backdrop-filter: blur(20px) saturate(180%);
+          -webkit-backdrop-filter: blur(20px) saturate(180%);
+          border: 1px solid rgba(255, 255, 255, 0.1);
+        }
       `;
       document.head.appendChild(style);
       return () => { if (document.head.contains(style)) document.head.removeChild(style); };

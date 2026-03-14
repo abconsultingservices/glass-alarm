@@ -1,5 +1,5 @@
-import React, { useState, useMemo, useCallback } from 'react';
-import { View, Text, Pressable, Platform, FlatList, Switch, StyleSheet, Dimensions } from 'react-native';
+import React, { useState, useMemo, useCallback, useRef } from 'react';
+import { View, Text, Pressable, Platform, FlatList, Switch, StyleSheet, Dimensions, Animated } from 'react-native';
 import { useRouter, useFocusEffect } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { useThemedStyles } from '../../hooks/useThemedStyles';
@@ -15,6 +15,16 @@ export default function DayView() {
   const insets = useSafeAreaInsets();
   const { colors, styles, getPressedStyle } = useThemedStyles();
   const isWeb = Platform.OS === 'web';
+
+  // --- GLASS ANIMATION SETUP ---
+  const scrollY = useRef(new Animated.Value(0)).current;
+
+  // Syncing with Month view logic: .9 (solid) to 0.65 (glassy)
+  const glassOpacity = scrollY.interpolate({
+    inputRange: [0, 50],
+    outputRange: [.9, 0.65],
+    extrapolate: 'clamp',
+  });
 
   const getLocalTodayString = () => {
     const now = new Date();
@@ -151,13 +161,13 @@ export default function DayView() {
   const formatTime = (date: Date) => date.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit', hour12: true });
 
   return (
-    <View style={[styles.setupContainer, { flex: 1, paddingTop: insets.top }]}>
-      <View style={styles.calendarHeaderRow}>
-        <Pressable onPress={handleSafeBack} style={({ pressed }) => [getPressedStyle(pressed), styles.glassPill]}>
+    <View style={{ flex: 1, backgroundColor: colors.background }}>
+      <View style={[styles.calendarHeaderRow, { paddingTop: insets.top, height: 54 + insets.top }]}>
+        <Pressable onPress={handleSafeBack} style={({ pressed }) => [getPressedStyle(pressed), styles.headerPill]}>
           <Ionicons name="chevron-back" size={20} color={colors.text} />
           <Text style={{ color: colors.text, fontSize: 17 }}>{monthName}</Text>
         </Pressable>
-        <View style={styles.glassPill}>
+        <View style={styles.headerPill}>
             <Pressable 
                 onPress={() => router.push('/settings')}
                 style={({ pressed }) => getPressedStyle(pressed)}
@@ -175,47 +185,55 @@ export default function DayView() {
                 </Pressable>
         </View>
       </View>
-
-      <View onTouchStart={onTouchStart} onTouchEnd={onTouchEnd} style={localStyles.weekContainer}>
-        {isWeb && (
-          <Pressable onPress={() => changeWeek('prev')} style={{ paddingRight: 10 }}>
-            <Ionicons name="chevron-back" size={20} color={colors.text} />
-          </Pressable>
-        )}
-        <View style={localStyles.weekStrip}>
-          {weekDays.map((day) => (
-            <Pressable key={day.date} onPress={() => updateDate(day.date)} style={localStyles.dayItem}>
-              <Text style={[localStyles.dayLabel, { color: colors.mutedText }]}>{day.dayLabel}</Text>
-              <View style={[
-                localStyles.dayCircle,
-                day.isSelected && { backgroundColor: day.isToday ? colors.error : colors.text }
-              ]}>
-                <Text style={[
-                  localStyles.dayNum,
-                  { color: day.isSelected ? colors.background : (day.isToday ? colors.error : colors.text) }
-                ]}>
-                  {day.dayNum}
-                </Text>
-              </View>
+      <View>
+        <View onTouchStart={onTouchStart} onTouchEnd={onTouchEnd} style={localStyles.weekContainer}>
+          {isWeb && (
+            <Pressable onPress={() => changeWeek('prev')} style={{ paddingRight: 10 }}>
+              <Ionicons name="chevron-back" size={20} color={colors.text} />
             </Pressable>
-          ))}
+          )}
+          <View style={localStyles.weekStrip}>
+            {weekDays.map((day) => (
+              <Pressable key={day.date} onPress={() => updateDate(day.date)} style={localStyles.dayItem}>
+                <Text style={[localStyles.dayLabel, { color: colors.mutedText }]}>{day.dayLabel}</Text>
+                <View style={[
+                  localStyles.dayCircle,
+                  day.isSelected && { backgroundColor: day.isToday ? colors.error : colors.text }
+                ]}>
+                  <Text style={[
+                    localStyles.dayNum,
+                    { color: day.isSelected ? colors.background : (day.isToday ? colors.error : colors.text) }
+                  ]}>
+                    {day.dayNum}
+                  </Text>
+                </View>
+              </Pressable>
+            ))}
+          </View>
+          {isWeb && (
+            <Pressable onPress={() => changeWeek('next')} style={{ paddingLeft: 10 }}>
+              <Ionicons name="chevron-forward" size={20} color={colors.text} />
+            </Pressable>
+          )}
         </View>
-        {isWeb && (
-          <Pressable onPress={() => changeWeek('next')} style={{ paddingLeft: 10 }}>
-            <Ionicons name="chevron-forward" size={20} color={colors.text} />
-          </Pressable>
-        )}
+
+        <View style={localStyles.dateLabelContainer}>
+          <Text style={[localStyles.dateText, { color: colors.text }]}>{fullDisplayDate}</Text>
+          <View style={[localStyles.nativeLine, { backgroundColor: colors.glassBorder }]} />
+        </View>
       </View>
 
-      <View style={localStyles.dateLabelContainer}>
-        <Text style={[localStyles.dateText, { color: colors.text }]}>{fullDisplayDate}</Text>
-        <View style={[localStyles.nativeLine, { backgroundColor: colors.glassBorder }]} />
-      </View>
-
+      {/* --- SCROLLABLE ROUTINES LIST --- */}
       <FlatList
         data={displayRoutines}
         keyExtractor={(item) => item.id}
-        contentContainerStyle={{ paddingHorizontal: 16, paddingTop: 10 }}
+        showsVerticalScrollIndicator={false}
+        onScroll={Animated.event(
+            [{ nativeEvent: { contentOffset: { y: scrollY } } }],
+            { useNativeDriver: false }
+        )}
+        scrollEventThrottle={16}
+        contentContainerStyle={{ paddingHorizontal: 16, paddingBottom: 140, paddingTop: 10 }}
         renderItem={({ item }) => (
           <View style={[styles.insetGroup, { marginBottom: 12, padding: 16, flexDirection: 'row', alignItems: 'center' }]}>
             <View style={{ flex: 1, opacity: item.isInstanceEnabled ? 1 : 0.4 }}>
@@ -237,18 +255,49 @@ export default function DayView() {
         ListEmptyComponent={<Text style={{ color: colors.mutedText, textAlign: 'center', marginTop: 40 }}>No Routines Scheduled</Text>}
       />
 
-      <View style={[styles.calendarFooter, { paddingBottom: Math.max(insets.bottom, 20) }]}>
+      {/* --- FLOATING ACTION LAYER --- */}
+      <Animated.View style={[
+        localStyles.floatingFooter, 
+        { 
+            bottom: insets.bottom > 0 ? insets.bottom - 16 : 4, 
+            opacity: glassOpacity 
+        }
+      ]}>
         <Pressable 
           onPress={() => updateDate(getLocalTodayString())} 
-          style={styles.glassPill}
+          style={({ pressed }) => [
+            styles.glassPill, 
+            getPressedStyle(pressed), 
+            { 
+              backgroundColor: colors.glassBackground, 
+              paddingHorizontal: 24, 
+              height: 44,
+              ...Platform.select({ web: { backdropFilter: 'blur(20px) saturate(180%)' } })
+            }
+          ]}
         >
           <Text style={{ color: colors.text, fontSize: 17, paddingHorizontal: 20 }}>Today</Text>
         </Pressable>
-        <Pressable style={[styles.glassPill, { flexDirection: 'row', gap: 8, paddingHorizontal: 15 }]}>
+
+        <Pressable 
+          onPress={() => router.push('/routines')} 
+          style={({ pressed }) => [
+            styles.glassPill, 
+            getPressedStyle(pressed), 
+            { 
+              backgroundColor: colors.glassBackground, 
+              flexDirection: 'row', 
+              gap: 8, 
+              paddingHorizontal: 15, 
+              height: 44,
+              ...Platform.select({ web: { backdropFilter: 'blur(20px) saturate(180%)' } })
+            }
+          ]}
+        >
           <Ionicons name="calendar-outline" size={20} color={colors.text} />
           <Text style={{ color: colors.text, fontSize: 17 }}>Routines</Text>
         </Pressable>
-      </View>
+      </Animated.View>
     </View>
   );
 }
@@ -262,5 +311,14 @@ const localStyles = StyleSheet.create({
   dayNum: { fontSize: 17, fontWeight: '400' },
   dateLabelContainer: { marginTop: 15, paddingHorizontal: 16 },
   dateText: { fontSize: 15, fontWeight: '600', marginBottom: 8 },
-  nativeLine: { height: 1, width: '100%' }
+  nativeLine: { height: 1, width: '100%' },
+  floatingFooter: {
+    position: 'absolute',
+    left: 20,
+    right: 20,
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    zIndex: 10,
+  }
 });

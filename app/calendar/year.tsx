@@ -17,7 +17,6 @@ const START_YEAR = 2020;
 const END_YEAR = 2030;
 const YEARS_DATA = Array.from({ length: END_YEAR - START_YEAR + 1 }, (_, i) => START_YEAR + i);
 
-// --- MEMOIZED MINI MONTH ---
 const MiniMonth = memo(({ year, monthIndex, systemToday, colors, onPress }: any) => {
   const monthDate = new Date(year, monthIndex);
   const monthName = monthDate.toLocaleString('default', { month: 'short' });
@@ -64,21 +63,19 @@ export default function CalendarYearView() {
   const flatListRef = useRef<FlatList>(null);
   const { colors, styles, getPressedStyle } = useThemedStyles();
 
-  // --- REFRESH LOGIC (Active Approach) ---
-  const getLocalTodayString = () => {
-    const now = new Date();
-    const offset = now.getTimezoneOffset() * 60000;
-    return new Date(now.getTime() - offset).toISOString().split('T')[0];
-  };
-
   // --- GLASS ANIMATION SETUP ---
   const scrollY = useRef(new Animated.Value(0)).current;
-
   const glassOpacity = scrollY.interpolate({
     inputRange: [0, 50],
     outputRange: [0.9, 0.65],
     extrapolate: 'clamp',
   });
+
+  const getLocalTodayString = () => {
+    const now = new Date();
+    const offset = now.getTimezoneOffset() * 60000;
+    return new Date(now.getTime() - offset).toISOString().split('T')[0];
+  };
 
   const [systemToday, setSystemToday] = useState(getLocalTodayString());
   const currentYearNum = useMemo(() => parseInt(systemToday.split('-')[0]), [systemToday]);
@@ -105,14 +102,9 @@ export default function CalendarYearView() {
           }, 100);
         }
       };
-      syncState();
       syncYearView();
     }, [])
   );
-
-  const syncState = async () => {
-     // Placeholder if extra local state sync is needed
-  };
 
   const getItemLayout = useCallback((_: any, index: number) => ({
     length: YEAR_ITEM_HEIGHT,
@@ -153,24 +145,36 @@ export default function CalendarYearView() {
   return (
     <View style={{ flex: 1, backgroundColor: colors.background }}>
       
-      {/* --- TOP FIXED HEADER --- */}
-      <View style={[styles.calendarHeaderRow, localStyles.floatingHeader, { top: insets.top + 10 }]}>
-        <View style={styles.headerPill}>
-            <Pressable onPress={() => router.replace('/settings')} style={({ pressed }) => getPressedStyle(pressed)}>
-              <Ionicons name="settings-outline" size={22} color={colors.text} />
-            </Pressable>
-            <View style={styles.pillDivider} />
-            <Ionicons name="search-outline" size={22} color={colors.text} />
-            <View style={styles.pillDivider} />
-            <Pressable 
-              onPress={() => router.push('/calendar/add-routine')}
-              style={({ pressed }) => getPressedStyle(pressed)}
-            >
-                <Ionicons name="add" size={26} color={colors.text} />
-            </Pressable>
+      {/* --- TOP FIXED HEADER SHIELD --- */}
+      {/* This solid View blocks the years from flowing into the notch area */}
+      <View style={{ 
+          position: 'absolute', 
+          top: 0, 
+          left: 0, 
+          right: 0, 
+          height: insets.top + 70, 
+          backgroundColor: colors.background, 
+          zIndex: 100 
+      }}>
+        <View style={[styles.calendarHeaderRow, localStyles.floatingHeader, { marginTop: insets.top + 10 }]}>
+          <View style={styles.headerPill}>
+              <Pressable onPress={() => router.replace('/settings')} style={({ pressed }) => getPressedStyle(pressed)}>
+                <Ionicons name="settings-outline" size={22} color={colors.text} />
+              </Pressable>
+              <View style={styles.pillDivider} />
+              <Ionicons name="search-outline" size={22} color={colors.text} />
+              <View style={styles.pillDivider} />
+              <Pressable 
+                onPress={() => router.push('/calendar/add-routine')}
+                style={({ pressed }) => getPressedStyle(pressed)}
+              >
+                  <Ionicons name="add" size={26} color={colors.text} />
+              </Pressable>
+          </View>
         </View>
       </View>
 
+      {/* --- SCROLLABLE YEARS --- */}
       <Animated.FlatList
         ref={flatListRef}
         data={YEARS_DATA}
@@ -183,14 +187,18 @@ export default function CalendarYearView() {
             { useNativeDriver: false }
         )}
         scrollEventThrottle={16}
-        contentContainerStyle={{ paddingTop: insets.top + 60, paddingHorizontal: 16, paddingBottom: 150 }}
+        contentContainerStyle={{ 
+            paddingTop: insets.top + 70, // Matches the Shield height
+            paddingHorizontal: 16, 
+            paddingBottom: 150 
+        }}
         removeClippedSubviews={Platform.OS !== 'web'}
         initialNumToRender={2}
         windowSize={3}
         extraData={systemToday}
       />
 
-      {/* --- FLOATING ACTION LAYER --- */}
+      {/* --- FLOATING ACTION FOOTER --- */}
       <Animated.View style={[
         localStyles.floatingFooter, 
         { 
@@ -214,7 +222,7 @@ export default function CalendarYearView() {
             { backgroundColor: colors.glassBackground, paddingHorizontal: 22, height: 44 }
           ]}
         >
-          <Text style={{ color: colors.text, fontSize: 17, fontWeight: '500' }}>Today</Text>
+          <Text style={{ color: colors.text, fontSize: 17, fontWeight: '600' }}>Today</Text>
         </Pressable>
 
         <Pressable 
@@ -232,7 +240,7 @@ export default function CalendarYearView() {
           ]}
         >
           <Ionicons name="calendar-outline" size={20} color={colors.text} />
-          <Text style={{ color: colors.text, fontSize: 17, fontWeight: '500' }}>Routines</Text>
+          <Text style={{ color: colors.text, fontSize: 17, fontWeight: '600' }}>Routines</Text>
         </Pressable>
       </Animated.View>
     </View>

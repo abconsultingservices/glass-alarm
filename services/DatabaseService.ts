@@ -130,7 +130,7 @@ class DatabaseService {
 
             await sqlite.runAsync(
                 `INSERT INTO routine_schedules (sguid, rguid, type, startDate, startTime, frequencyHours, maxOccurrences, createdBy, lastModifiedBy) 
-                 VALUES (?, ?, 'daily', '2026-01-01', '09:00', 4, 3, ?, ?)`,
+                 VALUES (?, ?, 'daily', '2026-01-01', '12:00', 4, 5, ?, ?)`,
                 [Crypto.randomUUID(), rguid2, uguid, uguid]
             );
 

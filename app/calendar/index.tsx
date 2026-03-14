@@ -20,7 +20,6 @@ export default function CalendarMonthView() {
   // --- GLASS ANIMATION SETUP ---
   const scrollY = useRef(new Animated.Value(0)).current;
 
-  // Logic: 1 (Solid colors.glassBackground) at top, fades to 0.75 glassy transparency on scroll
   const glassOpacity = scrollY.interpolate({
     inputRange: [0, 50],
     outputRange: [.9, 0.65],
@@ -189,7 +188,7 @@ export default function CalendarMonthView() {
           <Ionicons name="chevron-back" size={20} color={colors.text} />
           <Text style={{ color: colors.text, fontSize: 17 }}>{yearLabel}</Text>
         </Pressable>
-        <View style={styles.glassPill}>
+        <View style={styles.headerPill}>
             <Pressable onPress={() => router.push('/settings')} style={({ pressed }) => getPressedStyle(pressed)}>
                 <Ionicons name="settings-outline" size={22} color={colors.text} />
             </Pressable>
@@ -202,6 +201,43 @@ export default function CalendarMonthView() {
         </View>
       </View>
 
+      {/* --- FIXED CALENDAR SECTION (Out of FlatList) --- */}
+      <View onTouchStart={onTouchStart} onTouchEnd={onTouchEnd}>
+        {!isWeb && (
+          <View style={localStyles.iosHeaderContainer}>
+            <Text style={styles.largeMonthLabel}>{monthName}</Text>
+          </View>
+        )}
+        <Calendar
+          key={`${currentMonth}-${colors.isDark}-${systemToday}`}
+          current={currentMonth}
+          hideArrows={true}
+          renderHeader={() => (
+            isWeb ? (
+              <View style={localStyles.webHeaderJustified}>
+                <Pressable onPress={() => handleMonthChange('prev')}><Ionicons name="chevron-back" size={20} color={colors.text} /></Pressable>
+                <Text style={[localStyles.webMonthLabel, { color: colors.text }]}>{monthName}</Text>
+                <Pressable onPress={() => handleMonthChange('next')}><Ionicons name="chevron-forward" size={20} color={colors.text} /></Pressable>
+              </View>
+            ) : null
+          )}
+          onDayPress={(day) => handleDatePress(day.dateString)}
+          markedDates={markedDates}
+          theme={{
+            calendarBackground: 'transparent',
+            dayTextColor: colors.text,
+            todayTextColor: colors.error,
+            textSectionTitleColor: colors.mutedText,
+            selectedDayBackgroundColor: colors.text, 
+            selectedDayTextColor: colors.background,
+            'stylesheet.calendar.main': {
+                container: { paddingLeft: 0, paddingRight: 0, backgroundColor: 'transparent' }
+            }
+          }}
+        />
+      </View>
+
+      {/* --- SCROLLABLE ROUTINES SECTION --- */}
       <FlatList
         data={displayRoutines}
         keyExtractor={(item) => item.id}
@@ -211,48 +247,12 @@ export default function CalendarMonthView() {
             { useNativeDriver: false }
         )}
         scrollEventThrottle={16}
-        contentContainerStyle={{ paddingHorizontal: 16, paddingBottom: 140 }}
-        ListHeaderComponent={
-          <View onTouchStart={onTouchStart} onTouchEnd={onTouchEnd}>
-            {!isWeb && (
-              <View style={localStyles.iosHeaderContainer}>
-                <Text style={styles.largeMonthLabel}>{monthName}</Text>
-              </View>
-            )}
-            <Calendar
-              key={`${currentMonth}-${colors.isDark}-${systemToday}`}
-              current={currentMonth}
-              hideArrows={true}
-              renderHeader={() => (
-                isWeb ? (
-                  <View style={localStyles.webHeaderJustified}>
-                    <Pressable onPress={() => handleMonthChange('prev')}><Ionicons name="chevron-back" size={20} color={colors.text} /></Pressable>
-                    <Text style={[localStyles.webMonthLabel, { color: colors.text }]}>{monthName}</Text>
-                    <Pressable onPress={() => handleMonthChange('next')}><Ionicons name="chevron-forward" size={20} color={colors.text} /></Pressable>
-                  </View>
-                ) : null
-              )}
-              onDayPress={(day) => handleDatePress(day.dateString)}
-              markedDates={markedDates}
-              theme={{
-                calendarBackground: 'transparent',
-                dayTextColor: colors.text,
-                todayTextColor: colors.error,
-                textSectionTitleColor: colors.mutedText,
-                selectedDayBackgroundColor: colors.text, 
-                selectedDayTextColor: colors.background,
-                'stylesheet.calendar.main': {
-                    container: { paddingLeft: 0, paddingRight: 0, backgroundColor: 'transparent' }
-                }
-              }}
-            />
-          </View>
-        }
+        contentContainerStyle={{ paddingHorizontal: 16, paddingBottom: 140, paddingTop: 10 }}
         renderItem={({ item }) => (
           <View style={[styles.insetGroup, { marginBottom: 12, padding: 16, flexDirection: 'row', alignItems: 'center' }]}>
             <View style={{ flex: 1, opacity: item.isInstanceEnabled ? 1 : 0.4 }}>
               <Text style={{ color: colors.text, fontSize: 17, fontWeight: '600' }}>{item.name}</Text>
-              <Text style={{ color: colors.mutedText, fontSize: 13, marginTop: 2 }}>{item.repeat}</Text>
+              <Text style={{ color: colors.mutedText, fontSize: 13, marginTop: 2 }}>{item.repeat || 'daily'}</Text>
             </View>
             <View style={{ alignItems: 'flex-end', marginRight: 12, opacity: item.isInstanceEnabled ? 1 : 0.4 }}>
               <Text style={{ color: colors.text, fontSize: 15, fontWeight: '500' }}>{formatTime(item.startTime)}</Text>
@@ -273,7 +273,6 @@ export default function CalendarMonthView() {
       <Animated.View style={[
         localStyles.floatingFooter, 
         { 
-            // Reduced from 20 to 8 to pull it closer to the bottom viewport edge
             bottom: insets.bottom > 0 ? insets.bottom-16 : 4, 
             opacity: glassOpacity 
         }
