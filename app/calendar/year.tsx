@@ -63,7 +63,6 @@ export default function CalendarYearView() {
   const flatListRef = useRef<FlatList>(null);
   const { colors, styles, getPressedStyle } = useThemedStyles();
 
-  // --- GLASS ANIMATION SETUP ---
   const scrollY = useRef(new Animated.Value(0)).current;
   const glassOpacity = scrollY.interpolate({
     inputRange: [0, 50],
@@ -116,7 +115,19 @@ export default function CalendarYearView() {
     const freshToday = getLocalTodayString();
     setSystemToday(freshToday);
 
-    const monthString = `${year}-${(monthIndex + 1).toString().padStart(2, '0')}-01`;
+    // Extract current year/month for comparison
+    const [sYear, sMonth] = freshToday.split('-').map(Number);
+    const targetMonthIndex = monthIndex + 1;
+
+    let monthString;
+
+    // Check if the month being pressed is the actual current month
+    if (year === sYear && targetMonthIndex === sMonth) {
+      monthString = freshToday; // Land on today (e.g., March 14)
+    } else {
+      monthString = `${year}-${targetMonthIndex.toString().padStart(2, '0')}-01`; // Land on the 1st
+    }
+
     await AsyncStorage.setItem('calendar_zoom_level', 'month');
     await AsyncStorage.setItem('calendar_last_date', monthString);
     router.push('/calendar');
@@ -146,7 +157,6 @@ export default function CalendarYearView() {
     <View style={{ flex: 1, backgroundColor: colors.background }}>
       
       {/* --- TOP FIXED HEADER SHIELD --- */}
-      {/* This solid View blocks the years from flowing into the notch area */}
       <View style={{ 
           position: 'absolute', 
           top: 0, 
@@ -188,7 +198,7 @@ export default function CalendarYearView() {
         )}
         scrollEventThrottle={16}
         contentContainerStyle={{ 
-            paddingTop: insets.top + 70, // Matches the Shield height
+            paddingTop: insets.top + 70,
             paddingHorizontal: 16, 
             paddingBottom: 150 
         }}
@@ -199,13 +209,11 @@ export default function CalendarYearView() {
       />
 
       {/* --- FLOATING ACTION FOOTER --- */}
-      <Animated.View style={[
+      <View style={[
         localStyles.floatingFooter, 
-        { 
-          bottom: insets.bottom > 0 ? insets.bottom - 16 : 4,
-          opacity: glassOpacity 
-        }
+        { bottom: insets.bottom > 0 ? insets.bottom - 16 : 4 }
       ]}>
+        {/* LEFT BUTTON: TODAY */}
         <Pressable 
           onPress={() => {
             const freshToday = getLocalTodayString();
@@ -216,33 +224,44 @@ export default function CalendarYearView() {
               flatListRef.current?.scrollToIndex({ index, animated: true, viewPosition: 0 });
             }
           }} 
-          style={({ pressed }) => [
-            getPressedStyle(pressed), 
-            styles.glassPill, 
-            { backgroundColor: colors.glassBackground, paddingHorizontal: 22, height: 44 }
-          ]}
+          style={({ pressed }) => [getPressedStyle(pressed), { width: 110, height: 44 }]}
         >
-          <Text style={{ color: colors.text, fontSize: 17, fontWeight: '600' }}>Today</Text>
-        </Pressable>
-
-        <Pressable 
-          onPress={() => router.push('/routines')} 
-          style={({ pressed }) => [
-            getPressedStyle(pressed), 
-            styles.glassPill, 
+          <Animated.View style={[
+            StyleSheet.absoluteFill, 
             { 
               backgroundColor: colors.glassBackground, 
-              paddingHorizontal: 16, 
-              flexDirection: 'row', 
-              gap: 8, 
-              height: 44 
+              borderRadius: 30, 
+              opacity: glassOpacity,
+              borderWidth: 1,
+              borderColor: colors.glassBorderElevated 
             }
-          ]}
-        >
-          <Ionicons name="calendar-outline" size={20} color={colors.text} />
-          <Text style={{ color: colors.text, fontSize: 17, fontWeight: '600' }}>Routines</Text>
+          ]} />
+          <View style={localStyles.pillContentCenter}>
+            <Text style={{ color: colors.text, fontSize: 17, fontWeight: '600' }}>Today</Text>
+          </View>
         </Pressable>
-      </Animated.View>
+
+        {/* RIGHT BUTTON: ROUTINES */}
+        <Pressable 
+          onPress={() => router.push('/routines')} 
+          style={({ pressed }) => [getPressedStyle(pressed), { minWidth: 130, height: 44 }]}
+        >
+          <Animated.View style={[
+            StyleSheet.absoluteFill, 
+            { 
+              backgroundColor: colors.glassBackground, 
+              borderRadius: 30, 
+              opacity: glassOpacity,
+              borderWidth: 1,
+              borderColor: colors.glassBorderElevated 
+            }
+          ]} />
+          <View style={[localStyles.pillContentCenter, { flexDirection: 'row', gap: 8, paddingHorizontal: 16 }]}>
+            <Ionicons name="calendar-outline" size={20} color={colors.text} />
+            <Text style={{ color: colors.text, fontSize: 17, fontWeight: '600' }}>Routines</Text>
+          </View>
+        </Pressable>
+      </View>
     </View>
   );
 }
@@ -265,5 +284,11 @@ const localStyles = StyleSheet.create({
     justifyContent: 'space-between',
     alignItems: 'center',
     zIndex: 10,
+  },
+  pillContentCenter: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+    zIndex: 2,
   }
 });

@@ -19,7 +19,7 @@ export default function DayView() {
   // --- GLASS ANIMATION SETUP ---
   const scrollY = useRef(new Animated.Value(0)).current;
 
-  // Syncing with Month view logic: .9 (solid) to 0.65 (glassy)
+  // Logic: .9 (solid) to 0.65 (glassy)
   const glassOpacity = scrollY.interpolate({
     inputRange: [0, 50],
     outputRange: [.9, 0.65],
@@ -162,29 +162,25 @@ export default function DayView() {
 
   return (
     <View style={{ flex: 1, backgroundColor: colors.background }}>
+      {/* --- TOP FIXED HEADER --- */}
       <View style={[styles.calendarHeaderRow, { paddingTop: insets.top, height: 54 + insets.top }]}>
         <Pressable onPress={handleSafeBack} style={({ pressed }) => [getPressedStyle(pressed), styles.headerPill]}>
           <Ionicons name="chevron-back" size={20} color={colors.text} />
           <Text style={{ color: colors.text, fontSize: 17 }}>{monthName}</Text>
         </Pressable>
         <View style={styles.headerPill}>
-            <Pressable 
-                onPress={() => router.push('/settings')}
-                style={({ pressed }) => getPressedStyle(pressed)}
-            >
+            <Pressable onPress={() => router.push('/settings')} style={({ pressed }) => getPressedStyle(pressed)}>
                 <Ionicons name="settings-outline" size={22} color={colors.text} />
             </Pressable>
             <View style={styles.pillDivider} />
             <Ionicons name="search-outline" size={22} color={colors.text} />
             <View style={styles.pillDivider} />
-            <Pressable 
-                onPress={() => router.push('/calendar/add-routine')}
-                style={({ pressed }) => getPressedStyle(pressed)}
-                >
-                    <Ionicons name="add" size={26} color={colors.text} />
-                </Pressable>
+            <Pressable onPress={() => router.push('/calendar/add-routine')} style={({ pressed }) => getPressedStyle(pressed)}>
+                <Ionicons name="add" size={26} color={colors.text} />
+            </Pressable>
         </View>
       </View>
+
       <View>
         <View onTouchStart={onTouchStart} onTouchEnd={onTouchEnd} style={localStyles.weekContainer}>
           {isWeb && (
@@ -255,49 +251,55 @@ export default function DayView() {
         ListEmptyComponent={<Text style={{ color: colors.mutedText, textAlign: 'center', marginTop: 40 }}>No Routines Scheduled</Text>}
       />
 
-      {/* --- FLOATING ACTION LAYER --- */}
-      <Animated.View style={[
+      {/* --- DE-COUPLED FLOATING ACTION LAYER --- */}
+      <View style={[
         localStyles.floatingFooter, 
-        { 
-            bottom: insets.bottom > 0 ? insets.bottom - 16 : 4, 
-            opacity: glassOpacity 
-        }
+        { bottom: insets.bottom > 0 ? insets.bottom - 16 : 4 }
       ]}>
+        
+        {/* LEFT BUTTON: TODAY */}
         <Pressable 
           onPress={() => updateDate(getLocalTodayString())} 
-          style={({ pressed }) => [
-            styles.glassPill, 
-            getPressedStyle(pressed), 
+          style={({ pressed }) => [getPressedStyle(pressed), { width: 110, height: 44 }]}
+        >
+          <Animated.View style={[
+            StyleSheet.absoluteFill, 
             { 
               backgroundColor: colors.glassBackground, 
-              paddingHorizontal: 24, 
-              height: 44,
+              borderRadius: 30, 
+              opacity: glassOpacity, 
+              borderWidth: 1,
+              borderColor: colors.glassBorderElevated,
               ...Platform.select({ web: { backdropFilter: 'blur(20px) saturate(180%)' } })
             }
-          ]}
-        >
-          <Text style={{ color: colors.text, fontSize: 17, paddingHorizontal: 20 }}>Today</Text>
+          ]} />
+          <View style={localStyles.pillContentCenter}>
+            <Text style={{ color: colors.text, fontSize: 17, fontWeight: '600' }}>Today</Text>
+          </View>
         </Pressable>
 
+        {/* RIGHT BUTTON: ROUTINES */}
         <Pressable 
           onPress={() => router.push('/routines')} 
-          style={({ pressed }) => [
-            styles.glassPill, 
-            getPressedStyle(pressed), 
+          style={({ pressed }) => [getPressedStyle(pressed), { minWidth: 130, height: 44 }]}
+        >
+          <Animated.View style={[
+            StyleSheet.absoluteFill, 
             { 
               backgroundColor: colors.glassBackground, 
-              flexDirection: 'row', 
-              gap: 8, 
-              paddingHorizontal: 15, 
-              height: 44,
+              borderRadius: 30, 
+              opacity: glassOpacity, 
+              borderWidth: 1,
+              borderColor: colors.glassBorderElevated,
               ...Platform.select({ web: { backdropFilter: 'blur(20px) saturate(180%)' } })
             }
-          ]}
-        >
-          <Ionicons name="calendar-outline" size={20} color={colors.text} />
-          <Text style={{ color: colors.text, fontSize: 17 }}>Routines</Text>
+          ]} />
+          <View style={[localStyles.pillContentCenter, { flexDirection: 'row', gap: 8, paddingHorizontal: 16 }]}>
+            <Ionicons name="calendar-outline" size={20} color={colors.text} />
+            <Text style={{ color: colors.text, fontSize: 17, fontWeight: '600' }}>Routines</Text>
+          </View>
         </Pressable>
-      </Animated.View>
+      </View>
     </View>
   );
 }
@@ -320,5 +322,11 @@ const localStyles = StyleSheet.create({
     justifyContent: 'space-between',
     alignItems: 'center',
     zIndex: 10,
+  },
+  pillContentCenter: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+    zIndex: 2,
   }
 });

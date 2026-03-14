@@ -201,7 +201,7 @@ export default function CalendarMonthView() {
         </View>
       </View>
 
-      {/* --- FIXED CALENDAR SECTION (Out of FlatList) --- */}
+      {/* --- FIXED CALENDAR SECTION --- */}
       <View onTouchStart={onTouchStart} onTouchEnd={onTouchEnd}>
         {!isWeb && (
           <View style={localStyles.iosHeaderContainer}>
@@ -269,54 +269,54 @@ export default function CalendarMonthView() {
         ListEmptyComponent={<Text style={{ color: colors.mutedText, textAlign: 'center', marginTop: 20 }}>No Routines</Text>}
       />
 
-      {/* --- FLOATING ACTION LAYER --- */}
-      <Animated.View style={[
+      {/* --- DE-COUPLED FLOATING ACTION LAYER --- */}
+      <View style={[
         localStyles.floatingFooter, 
-        { 
-            bottom: insets.bottom > 0 ? insets.bottom-16 : 4, 
-            opacity: glassOpacity 
-        }
+        { bottom: insets.bottom > 0 ? insets.bottom - 16 : 4 }
       ]}>
+        {/* LEFT BUTTON: TODAY */}
         <Pressable 
           onPress={() => handleDatePress(getLocalTodayString())} 
-          style={({ pressed }) => [
-            styles.glassPill, 
-            getPressedStyle(pressed), 
+          style={({ pressed }) => [getPressedStyle(pressed), { width: 110, height: 44 }]}
+        >
+          <Animated.View style={[
+            StyleSheet.absoluteFill, 
             { 
               backgroundColor: colors.glassBackground, 
-              paddingHorizontal: 24, 
-              height: 44,
-              // Web-specific backdrop blur fallback
-              ...Platform.select({
-                web: { backdropFilter: 'blur(20px) saturate(180%)' }
-              })
+              borderRadius: 30, 
+              opacity: glassOpacity, 
+              borderWidth: 1,
+              borderColor: colors.glassBorderElevated,
+              ...Platform.select({ web: { backdropFilter: 'blur(20px) saturate(180%)' } })
             }
-          ]}
-        >
-          <Text style={{ color: colors.text, fontSize: 17, fontWeight: '600' }}>Today</Text>
+          ]} />
+          <View style={localStyles.pillContentCenter}>
+            <Text style={{ color: colors.text, fontSize: 17, fontWeight: '600' }}>Today</Text>
+          </View>
         </Pressable>
 
+        {/* RIGHT BUTTON: ROUTINES */}
         <Pressable 
           onPress={() => router.push('/routines')} 
-          style={({ pressed }) => [
-            styles.glassPill, 
-            getPressedStyle(pressed), 
+          style={({ pressed }) => [getPressedStyle(pressed), { minWidth: 130, height: 44 }]}
+        >
+          <Animated.View style={[
+            StyleSheet.absoluteFill, 
             { 
               backgroundColor: colors.glassBackground, 
-              flexDirection: 'row', 
-              gap: 8, 
-              paddingHorizontal: 20, 
-              height: 44,
-              ...Platform.select({
-                web: { backdropFilter: 'blur(20px) saturate(180%)' }
-              })
+              borderRadius: 30, 
+              opacity: glassOpacity, 
+              borderWidth: 1,
+              borderColor: colors.glassBorderElevated,
+              ...Platform.select({ web: { backdropFilter: 'blur(20px) saturate(180%)' } })
             }
-          ]}
-        >
-          <Ionicons name="calendar-outline" size={20} color={colors.text} />
-          <Text style={{ color: colors.text, fontSize: 17, fontWeight: '600' }}>Routines</Text>
+          ]} />
+          <View style={[localStyles.pillContentCenter, { flexDirection: 'row', gap: 8, paddingHorizontal: 16 }]}>
+            <Ionicons name="calendar-outline" size={20} color={colors.text} />
+            <Text style={{ color: colors.text, fontSize: 17, fontWeight: '600' }}>Routines</Text>
+          </View>
         </Pressable>
-      </Animated.View>
+      </View>
     </View>
   );
 }
@@ -333,6 +333,11 @@ const localStyles = StyleSheet.create({
     justifyContent: 'space-between',
     alignItems: 'center',
     zIndex: 10,
-    bottom: 0
+  },
+  pillContentCenter: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+    zIndex: 2,
   }
 });
