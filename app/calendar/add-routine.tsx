@@ -1,73 +1,77 @@
-import React, { useState, useRef, useMemo } from 'react';
+import React, { useState, useRef, useMemo, useEffect } from 'react';
 import { View, Text, Pressable, Animated, ScrollView, Platform } from 'react-native';
 import { useRouter } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { dbService } from '../../services/DatabaseService';
 import { useThemedStyles } from '../../hooks/useThemedStyles';
-import { GlassFormRenderer, Section } from '../../components/GlassFormRenderer';
+import { GlassFormRenderer } from '../../components/GlassFormRenderer';
 import { getInitialFormState, getInitialErrorState, validateValue } from '../../utils/ValidationEngine';
+import { fieldRegistry } from '../../services/FieldRegistry';
 import { Ionicons } from '@expo/vector-icons';
-
-const ADD_SCHEMA: Section[] = [
-    {
-        sectionType: 'pills',
-        fields: [
-            { 
-                key: 'name', 
-                label: 'Title', 
-                validation: [{ type: 'required', errorMsg: 'Required' }], 
-                config: { placeholder: 'Title' } 
-            },
-            { 
-                key: 'location', 
-                label: 'Location', 
-                config: { placeholder: 'Location or Video Call' } 
-            }
-        ]
-    },
-    {
-        sectionType: 'insetGroup',
-        label: 'SCHEDULE',
-        footer: 'Multi-hit routines (like water) will automatically expand on your calendar.',
-        fields: [
-            { key: 'startTime', label: 'Starts', config: { placeholder: '08:00' } },
-            { key: 'duration', label: 'Duration (Mins)', config: { keyboardType: 'number-pad', placeholder: '30' } },
-            { key: 'type', label: 'Repeat', config: { defaultValue: 'daily' } },
-            { key: 'frequencyHours', label: 'Every X Hours', config: { keyboardType: 'number-pad' } },
-            { key: 'maxOccurrences', label: 'Max Daily Hits', config: { keyboardType: 'number-pad' } }
-        ]
-    }
-];
 
 export default function AddRoutine() {
     const router = useRouter();
     const insets = useSafeAreaInsets();
     const { styles, colors, getPressedStyle } = useThemedStyles(); 
 
-    const [form, setForm] = useState(() => getInitialFormState(ADD_SCHEMA));
-    const [errors, setErrors] = useState(() => getInitialErrorState(ADD_SCHEMA));
-    const [activeTab, setActiveTab] = useState('Routine'); 
+    // --- DYNAMIC SCHEMA GENERATION ---
+    // We generate the schema inside the component to allow for conditional fields
+    const schema = useMemo(() => [
+        {
+            sectionType: 'pills' as const,
+            fields: [
+                { key: 'name', ...fieldRegistry.routines.name },
+                { key: 'duration', ...fieldRegistry.routines.duration },
+            ]
+        },
+        {
+            sectionType: 'insetGroup' as const,
+            label: 'SCHEDULE',
+            footer: 'Multi-hit routines automatically expand on your calendar.',
+            fields: [
+                { key: 'startDate', ...fieldRegistry.routine_schedules.startDate },
+                { key: 'startTime', ...fieldRegistry.routine_schedules.startTime },
+                { key: 'endDate', ...fieldRegistry.routine_schedules.endDate },
+                { key: 'type', ...fieldRegistry.routine_schedules.type },
+                // Conditional Field: Only show day picker if "Custom" is selected
+            ]
+        }
+    ], []);
 
+    const [form, setForm] = useState(() => {
+        const initial = getInitialFormState(schema);
+        // Set defaults for Liquid Glass feel
+        return { 
+            ...initial, 
+            type: 'daily', 
+            startDate: new Date().toISOString().split('T')[0],
+            startTime: '08:00',
+            duration: '30'
+        };
+    });
+
+    const [errors, setErrors] = useState(() => getInitialErrorState(schema));
+    const [activeTab, setActiveTab] = useState('Routine'); 
     const shakeAnim = useRef(new Animated.Value(0)).current;
 
-    // --- REACTIVE DERIVED STATE ---
-    const hasErrors = useMemo(() => {
-        // 1. Check for active validation error messages
-        const hasActiveErrors = Object.values(errors).some(e => e !== null && e !== undefined && e !== '');
-        
-        // 2. Defensive check for missing required data
-        // We use !! and .trim() to ensure null, undefined, and " " are all caught
-        const nameVal = form?.name || '';
-        const timeVal = form?.startTime || '';
-        
-        const isNameMissing = nameVal.trim() === '';
-        const isTimeMissing = timeVal.trim() === '';
+    // --- RE-CALCULATE SCHEMA BASED ON SELECTION ---
+    const activeSchema = useMemo(() => {
+        const base = JSON.parse(JSON.stringify(schema));
+        if (form.type === 'custom') {
+            base[1].fields.push({ key: 'customDays', ...fieldRegistry.routine_schedules.customDays });
+        }
+        // Add multi-hit settings to the end of the schedule section
+        base[1].fields.push({ key: 'frequencyHours', ...fieldRegistry.routine_schedules.frequencyHours });
+        base[1].fields.push({ key: 'maxOccurrences', ...fieldRegistry.routine_schedules.maxOccurrences });
+        return base;
+    }, [form.type, schema]);
 
-        // DEBUG: Uncomment this to see exactly what is blocking the save in your console
-        // console.log('Validation Check:', { hasActiveErrors, isNameMissing, isTimeMissing, currentName: nameVal, currentTime: timeVal });
-        
+    const hasErrors = useMemo(() => {
+        const hasActiveErrors = Object.values(errors).some(e => !!e);
+        const isNameMissing = !form?.name?.trim();
+        const isTimeMissing = !form?.startTime;
         return hasActiveErrors || isNameMissing || isTimeMissing;
-    }, [errors, form]); // Listening to the whole form object ensures we catch every keystroke
+    }, [errors, form]);
 
     const triggerShake = () => {
         Animated.sequence([
@@ -78,12 +82,11 @@ export default function AddRoutine() {
     };
 
     const handleSave = async () => {
-        // 1. Final validation sweep
         const newErrors: any = {};
         let hasValidationError = false;
 
-        ADD_SCHEMA.forEach(section => {
-            section.fields.forEach(field => {
+        activeSchema.forEach((section: any) => {
+            section.fields.forEach((field: any) => {
                 if (field.validation) {
                     const errorMsg = validateValue(form[field.key], field.validation);
                     if (errorMsg) {
@@ -94,24 +97,23 @@ export default function AddRoutine() {
             });
         });
 
-        // 2. Extra check for startTime (required for DB but not in validation schema)
-        if (!form.startTime) {
-            newErrors.startTime = 'Required';
-            hasValidationError = true;
-        }
-
         if (hasValidationError) {
             setErrors(newErrors);
             triggerShake();
             return;
         }
 
-        // 3. Proceed with save
-        const success = await dbService.createRoutine(form.name, form.duration || '30', {
+        // --- PERSIST TO DATABASE ---
+        // Note: We pass the expanded schedule object matching our new schema
+        const success = await dbService.createRoutine(form.name, parseInt(form.duration), {
+            type: form.type,
+            startDate: form.startDate,
             startTime: form.startTime,
-            type: form.type || 'daily',
-            frequencyHours: form.frequencyHours,
-            maxOccurrences: form.maxOccurrences
+            endDate: form.endDate || null,
+            endTime: null, // Defaulting to null for now
+            customDays: form.type === 'custom' ? form.customDays : null,
+            frequencyHours: form.frequencyHours ? parseInt(form.frequencyHours) : null,
+            maxOccurrences: form.maxOccurrences ? parseInt(form.maxOccurrences) : 1
         });
 
         if (success) router.back();
@@ -120,34 +122,23 @@ export default function AddRoutine() {
     return (
         <View style={styles.modalContainer}>
             <View style={styles.sheetHandleContainer}><View style={styles.sheetHandle} /></View>
+            
             <View style={[styles.modalHeader, { paddingTop: Platform.OS === 'ios' ? 0 : insets.top }]}>
-                <Pressable 
-                    onPress={() => router.back()} 
-                    style={({ pressed }) => [
-                        styles.circularButton, 
-                        getPressedStyle(pressed)]}
-                >
+                <Pressable onPress={() => router.back()} style={({ pressed }) => [styles.circularButton, getPressedStyle(pressed)]}>
                     <Ionicons name="close" size={24} color={colors.text} />
                 </Pressable>
                 
-                <Text style={styles.modalTitle}>New</Text>
+                <Text style={styles.modalTitle}>New Routine</Text>
 
                 <Pressable 
                     onPress={handleSave} 
                     style={({ pressed }) => [
                         styles.circularButton, 
                         getPressedStyle(pressed),
-                        hasErrors && { 
-                            backgroundColor: 'rgba(255, 69, 58, 0.15)',
-                            borderColor: colors.error
-                         }
+                        hasErrors && { backgroundColor: 'rgba(255, 69, 58, 0.15)', borderColor: colors.error }
                     ]}
                 >
-                    <Ionicons 
-                        name="checkmark" 
-                        size={24} 
-                        color={hasErrors ? colors.error : colors.text} 
-                    />
+                    <Ionicons name="checkmark" size={24} color={hasErrors ? colors.error : colors.text} />
                 </Pressable>
             </View>
 
@@ -157,29 +148,18 @@ export default function AddRoutine() {
                         <Pressable 
                             key={tab}
                             onPress={() => setActiveTab(tab)}
-                            style={[
-                                styles.segmentItem,
-                                activeTab === tab && styles.segmentItemActive
-                            ]}
+                            style={[styles.segmentItem, activeTab === tab && styles.segmentItemActive]}
                         >
-                            <Text style={[
-                                styles.segmentText,
-                                activeTab === tab && { fontWeight: '600' }
-                            ]}>
-                                {tab}
-                            </Text>
+                            <Text style={[styles.segmentText, activeTab === tab && { fontWeight: '600' }]}>{tab}</Text>
                         </Pressable>
                     ))}
                 </View>
             </View>
 
-            <ScrollView 
-                contentContainerStyle={{ paddingHorizontal: 16, paddingBottom: 100 }}
-                showsVerticalScrollIndicator={false}
-            >
+            <ScrollView contentContainerStyle={{ paddingHorizontal: 16, paddingBottom: 100 }} showsVerticalScrollIndicator={false}>
                 <Animated.View style={{ transform: [{ translateX: shakeAnim }] }}>
                     <GlassFormRenderer 
-                        schema={ADD_SCHEMA}
+                        schema={activeSchema}
                         form={form}
                         setForm={setForm}
                         errors={errors}
