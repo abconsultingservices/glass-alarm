@@ -91,6 +91,58 @@ export default function RootLayout() {
           -webkit-backdrop-filter: blur(20px) saturate(180%);
           border: 1px solid rgba(255, 255, 255, 0.1);
         }
+
+        /* Liquid Glass Web Picker Overrides */
+        /* Add to your global CSS or index.html <style> tag */
+        @media (prefers-color-scheme: dark) {
+            input[type="date"], input[type="time"] {
+                color-scheme: dark;
+            }
+        }
+
+        /* Custom fonts for the fields */
+        input {
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+        }
+
+       input[type="date"], input[type="time"] {
+            position: relative;
+        }
+
+        /* This forces the browser's hidden "click area" to fill the entire container */
+        input[type="date"]::-webkit-calendar-picker-indicator,
+        input[type="time"]::-webkit-calendar-picker-indicator {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            margin: 0;
+            padding: 0;
+            cursor: pointer;
+            opacity: 0; /* Keeps it invisible while allowing click-through */
+        }
+
+        /* Fix for the white popover context on web */
+        @media (prefers-color-scheme: dark) {
+            :root {
+                color-scheme: dark;
+            }
+        }
+
+        /* Restyling the actual dropdown popup for Chrome/Edge/Safari */
+        ::-webkit-datetime-edit-text { color: var(--text-color); padding: 0 2px; }
+        ::-webkit-datetime-edit-month-field { color: var(--text-color); }
+        ::-webkit-datetime-edit-day-field { color: var(--text-color); }
+        ::-webkit-datetime-edit-year-field { color: var(--text-color); }
+        ::-webkit-datetime-edit-hour-field { color: var(--text-color); }
+        ::-webkit-datetime-edit-minute-field { color: var(--text-color); }
+        ::-webkit-datetime-edit-ampm-field { color: var(--text-color); }
+
+        /* Force the internal picker popover to inherit theme colors where possible */
+        input::-webkit-calendar-picker-indicator {
+            filter: invert(var(--icon-invert)); /* 1 for dark theme, 0 for light */
+        }
       `;
       document.head.appendChild(style);
       return () => { if (document.head.contains(style)) document.head.removeChild(style); };

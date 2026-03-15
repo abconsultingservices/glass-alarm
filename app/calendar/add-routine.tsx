@@ -1,6 +1,6 @@
-import React, { useState, useRef, useMemo, useEffect } from 'react';
+import React, { useState, useRef, useMemo, useCallback } from 'react';
 import { View, Text, Pressable, Animated, ScrollView, Platform } from 'react-native';
-import { useRouter } from 'expo-router';
+import { useRouter, useFocusEffect } from 'expo-router'; // Added useFocusEffect
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { dbService } from '../../services/DatabaseService';
 import { useThemedStyles } from '../../hooks/useThemedStyles';
@@ -8,6 +8,7 @@ import { GlassFormRenderer } from '../../components/GlassFormRenderer';
 import { getInitialFormState, getInitialErrorState, validateValue } from '../../utils/ValidationEngine';
 import { fieldRegistry } from '../../services/FieldRegistry';
 import { Ionicons } from '@expo/vector-icons';
+import AsyncStorage from '@react-native-async-storage/async-storage'; // Added AsyncStorage
 
 export default function AddRoutine() {
     const router = useRouter();
@@ -15,7 +16,6 @@ export default function AddRoutine() {
     const { styles, colors, getPressedStyle } = useThemedStyles(); 
 
     // --- DYNAMIC SCHEMA GENERATION ---
-    // We generate the schema inside the component to allow for conditional fields
     const schema = useMemo(() => [
         {
             sectionType: 'pills' as const,
@@ -33,14 +33,12 @@ export default function AddRoutine() {
                 { key: 'startTime', ...fieldRegistry.routine_schedules.startTime },
                 { key: 'endDate', ...fieldRegistry.routine_schedules.endDate },
                 { key: 'type', ...fieldRegistry.routine_schedules.type },
-                // Conditional Field: Only show day picker if "Custom" is selected
             ]
         }
     ], []);
 
     const [form, setForm] = useState(() => {
         const initial = getInitialFormState(schema);
-        // Set defaults for Liquid Glass feel
         return { 
             ...initial, 
             type: 'daily', 
@@ -54,13 +52,27 @@ export default function AddRoutine() {
     const [activeTab, setActiveTab] = useState('Routine'); 
     const shakeAnim = useRef(new Animated.Value(0)).current;
 
+    // --- SELECTION ROUND-TRIP HANDLER ---
+    // Listens for updates from selection-view.tsx when the screen regains focus
+    useFocusEffect(
+        useCallback(() => {
+            const checkSelections = async () => {
+                const selectedType = await AsyncStorage.getItem('selection_temp_type');
+                if (selectedType) {
+                    setForm((prev: any) => ({ ...prev, type: selectedType }));
+                    await AsyncStorage.removeItem('selection_temp_type');
+                }
+            };
+            checkSelections();
+        }, [])
+    );
+
     // --- RE-CALCULATE SCHEMA BASED ON SELECTION ---
     const activeSchema = useMemo(() => {
         const base = JSON.parse(JSON.stringify(schema));
         if (form.type === 'custom') {
             base[1].fields.push({ key: 'customDays', ...fieldRegistry.routine_schedules.customDays });
         }
-        // Add multi-hit settings to the end of the schedule section
         base[1].fields.push({ key: 'frequencyHours', ...fieldRegistry.routine_schedules.frequencyHours });
         base[1].fields.push({ key: 'maxOccurrences', ...fieldRegistry.routine_schedules.maxOccurrences });
         return base;
@@ -103,14 +115,12 @@ export default function AddRoutine() {
             return;
         }
 
-        // --- PERSIST TO DATABASE ---
-        // Note: We pass the expanded schedule object matching our new schema
         const success = await dbService.createRoutine(form.name, parseInt(form.duration), {
             type: form.type,
             startDate: form.startDate,
             startTime: form.startTime,
             endDate: form.endDate || null,
-            endTime: null, // Defaulting to null for now
+            endTime: null,
             customDays: form.type === 'custom' ? form.customDays : null,
             frequencyHours: form.frequencyHours ? parseInt(form.frequencyHours) : null,
             maxOccurrences: form.maxOccurrences ? parseInt(form.maxOccurrences) : 1

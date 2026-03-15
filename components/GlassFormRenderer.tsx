@@ -1,4 +1,4 @@
-import React from 'react';
+import React, {useMemo} from 'react';
 import { View, Text, TextInput, Pressable, ScrollView, Platform, Switch, StyleSheet } from 'react-native';
 import { useRouter } from 'expo-router';
 import { useThemedStyles } from '../hooks/useThemedStyles';
@@ -9,7 +9,7 @@ import DateTimePicker from '@react-native-community/datetimepicker';
 interface Field {
     key: string;
     label: string;
-    type?: 'text' | 'email' | 'phone' | 'url' | 'password' | 'select' | 'date' | 'time' | 'customDays' | 'switch';
+    type?: 'text' | 'email' | 'phone' | 'url' | 'password' | 'select' | 'select-nav' | 'date' | 'time' | 'customDays' | 'switch';
     subtext?: string;
     validation?: ValidationRule[];
     config?: any;
@@ -42,7 +42,9 @@ export const GlassFormRenderer = ({ schema, form, setForm, errors, setErrors }: 
     const handleUpdate = (key: string, val: any, rules: ValidationRule[] = [], overrideFilter?: RegExp, type?: string) => {
         let filteredVal = val;
         
-        if (typeof val === 'string' && !['date', 'time', 'switch', 'customDays'].includes(type || '')) {
+        // Ensure we don't try to run string replace filters on non-text types
+        const nonTextTypes = ['date', 'time', 'switch', 'customDays', 'select-nav', 'select'];
+        if (typeof val === 'string' && !nonTextTypes.includes(type || '')) {
             if (overrideFilter) {
                 filteredVal = val.replace(overrideFilter, '');
             } else {
@@ -107,9 +109,9 @@ export const GlassFormRenderer = ({ schema, form, setForm, errors, setErrors }: 
                                 );
                             }
 
-                            // --Select Nav
-
+                            // --- SELECT NAV (ALARM CLOCK MODEL) ---
                             if (field.type === 'select-nav') {
+                                const activeOption = field.options?.find(o => o.value === form[field.key]);
                                 return (
                                     <View key={field.key}>
                                         <Pressable
@@ -123,14 +125,14 @@ export const GlassFormRenderer = ({ schema, form, setForm, errors, setErrors }: 
                                                 }
                                             })}
                                             style={({ pressed }) => [
-                                                { flexDirection: 'row', alignItems: 'center', paddingHorizontal: 16, minHeight: 54, justifyContent: 'space-between' },
-                                                getPressedStyle(pressed)
+                                                getPressedStyle(pressed),
+                                                { flexDirection: 'row', alignItems: 'center', paddingHorizontal: 16, minHeight: 54, justifyContent: 'space-between' }
                                             ]}
                                         >
                                             <Text style={{ fontSize: 17, color: colors.text }}>{field.label}</Text>
                                             <View style={{ flexDirection: 'row', alignItems: 'center' }}>
                                                 <Text style={{ fontSize: 17, color: colors.mutedText, marginRight: 8 }}>
-                                                    {field.options?.find(o => o.value === form[field.key])?.label || 'Select'}
+                                                    {activeOption?.label || form[field.key] || 'Daily'}
                                                 </Text>
                                                 <Ionicons name="chevron-forward" size={16} color={colors.mutedText} style={{ opacity: 0.5 }} />
                                             </View>
@@ -140,7 +142,7 @@ export const GlassFormRenderer = ({ schema, form, setForm, errors, setErrors }: 
                                 );
                             }
 
-                            // --- SWITCH (Toggle) ---
+                            // --- SWITCH ---
                             if (field.type === 'switch') {
                                 return (
                                     <View key={field.key}>
@@ -200,27 +202,100 @@ export const GlassFormRenderer = ({ schema, form, setForm, errors, setErrors }: 
                                 );
                             }
 
-                            // --- DATE / TIME PICKERS ---
+                            // --- DATE / TIME ---
+                            // Inside GlassFormRenderer.tsx
                             if (field.type === 'date' || field.type === 'time') {
+                                const isWeb = Platform.OS === 'web';
+                                const rawValue = form[field.key];
+                                
+                                const displayValue = useMemo(() => {
+                                    if (!rawValue) return field.type === 'date' ? 'yyyy-mm-dd' : '--:--';
+                                    if (field.type === 'time') {
+                                        const [h, m] = rawValue.split(':');
+                                        const hh = parseInt(h);
+                                        const ampm = hh >= 12 ? 'PM' : 'AM';
+                                        const h12 = hh % 12 || 12;
+                                        return `${h12}:${m} ${ampm}`;
+                                    }
+                                    return rawValue;
+                                }, [rawValue, field.type]);
+
                                 return (
                                     <View key={field.key}>
-                                        <View style={{ flexDirection: 'row', alignItems: 'center', paddingHorizontal: 16, minHeight: 54, justifyContent: 'space-between' }}>
+                                        {/* The outer container is now the relative anchor for the whole row click */}
+                                        <View style={{ 
+                                            flexDirection: 'row', 
+                                            alignItems: 'center', 
+                                            paddingHorizontal: 16, 
+                                            minHeight: 54, 
+                                            justifyContent: 'space-between',
+                                            position: 'relative', // CRITICAL for absolute children
+                                            overflow: 'hidden'    // Keeps the hidden input contained
+                                        }}>
                                             <Text style={{ fontSize: 17, color: colors.text }}>{field.label}</Text>
-                                            <DateTimePicker
-                                                value={new Date(form[field.key] ? (field.type === 'date' ? `${form[field.key]}T00:00:00` : `2000-01-01T${form[field.key]}`) : Date.now())}
-                                                mode={field.type}
-                                                display={Platform.OS === 'ios' ? 'compact' : 'default'}
-                                                onChange={(e, d) => d && handleUpdate(field.key, field.type === 'date' ? d.toISOString().split('T')[0] : d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', hour12: false }))}
-                                                textColor={colors.text}
-                                                themeVariant={colors.isDark ? 'dark' : 'light'}
-                                            />
+                                            
+                                            <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'flex-end' }}>
+                                                {isWeb ? (
+                                                    <>
+                                                        {/* THE VISIBLE STYLED LAYER */}
+                                                        <View style={{ flexDirection: 'row', alignItems: 'center', paddingRight: 4 }}>
+                                                            <Text style={{ 
+                                                                fontSize: 18, 
+                                                                color: rawValue ? colors.text : colors.mutedText, 
+                                                                marginRight: 10,
+                                                                fontVariant: ['tabular-nums'], 
+                                                                letterSpacing: -0.4,
+                                                                fontFamily: 'system-ui, -apple-system, sans-serif'
+                                                            }}>
+                                                                {displayValue}
+                                                            </Text>
+                                                            <Ionicons 
+                                                                name={field.type === 'date' ? "calendar" : "time"} 
+                                                                size={20} 
+                                                                color={colors.mutedText} 
+                                                                style={{ opacity: 0.8 }}
+                                                            />
+                                                        </View>
+
+                                                        {/* THE INVISIBLE INTERACTIVE LAYER */}
+                                                        {/* This input now covers the entire parent View's area */}
+                                                        <input
+                                                            type={field.type}
+                                                            value={rawValue || ''}
+                                                            onChange={(e) => handleUpdate(field.key, e.target.value)}
+                                                            style={{
+                                                                position: 'absolute',
+                                                                top: 0,
+                                                                left: 0,
+                                                                width: '100%',
+                                                                height: '100%',
+                                                                opacity: 0,
+                                                                cursor: 'pointer',
+                                                                zIndex: 10,
+                                                                border: 'none',
+                                                                outline: 'none',
+                                                                WebkitAppearance: 'none'
+                                                            } as any}
+                                                        />
+                                                    </>
+                                                ) : (
+                                                    <DateTimePicker
+                                                        value={new Date(form[field.key] ? (field.type === 'date' ? `${form[field.key]}T00:00:00` : `2000-01-01T${form[field.key]}`) : Date.now())}
+                                                        mode={field.type}
+                                                        display={Platform.OS === 'ios' ? 'compact' : 'default'}
+                                                        onChange={(e, d) => d && handleUpdate(field.key, field.type === 'date' ? d.toISOString().split('T')[0] : d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', hour12: false }))}
+                                                        textColor={colors.text}
+                                                        themeVariant={colors.isDark ? 'dark' : 'light'}
+                                                    />
+                                                )}
+                                            </View>
                                         </View>
                                         {!isLast && section.sectionType === 'insetGroup' && <View style={styles.divider} />}
                                     </View>
                                 );
                             }
 
-                            // --- STANDARD TEXT INPUT ---
+                            // --- TEXT INPUT ---
                             return (
                                 <View key={field.key} style={{ marginBottom: isPill ? (hasError ? 4 : 16) : 0 }}>
                                     <View style={isPill ? [styles.inputContainer, hasError && { borderColor: colors.error, borderWidth: 1.5 }] : [styles.inputRow, { position: 'relative' }]}>
