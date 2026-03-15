@@ -52,7 +52,7 @@ CREATE TABLE IF NOT EXISTS users (
     FOREIGN KEY(gguid) REFERENCES groups(gguid)
 );
 
--- 3. Routines Header (The "Master" definition)
+-- 3. Routines Header
 CREATE TABLE IF NOT EXISTS routines (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     rguid TEXT NOT NULL UNIQUE,
@@ -60,7 +60,7 @@ CREATE TABLE IF NOT EXISTS routines (
     gguid TEXT NOT NULL,
     name TEXT NOT NULL,
     isActive INTEGER DEFAULT 1,
-    duration INTEGER, -- Default duration in minutes
+    duration INTEGER, 
     createDate TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     createdBy TEXT NOT NULL,
     lastModifiedDate TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
@@ -69,17 +69,20 @@ CREATE TABLE IF NOT EXISTS routines (
     FOREIGN KEY(gguid) REFERENCES groups(gguid) ON DELETE CASCADE
 );
 
--- 4. Routine Schedules (The Recurrence Rule)
+-- 4. Routine Schedules (Updated with End Boundaries)
 CREATE TABLE IF NOT EXISTS routine_schedules (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     sguid TEXT NOT NULL UNIQUE,
     rguid TEXT NOT NULL,
     type TEXT CHECK(type IN ('daily', 'weekdays', 'weekends', 'custom')) NOT NULL,
+    customDays TEXT,
     isActive INTEGER DEFAULT 1,
-    startDate DATE NOT NULL,      -- When the recurrence starts
-    startTime TIME NOT NULL,      -- e.g. '07:00'
-    frequencyHours INTEGER,       -- For multi-hit (e.g. every 4 hours)
-    maxOccurrences INTEGER,       -- Total hits per day (e.g. 3 times)
+    startDate TEXT NOT NULL,      -- YYYY-MM-DD
+    startTime TEXT NOT NULL,      -- HH:mm
+    endDate TEXT,                 -- YYYY-MM-DD (New Column)
+    endTime TEXT,                 -- HH:mm (New Column)
+    frequencyHours INTEGER,       
+    maxOccurrences INTEGER,       
     createDate TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     createdBy TEXT NOT NULL,
     lastModifiedDate TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
@@ -87,27 +90,26 @@ CREATE TABLE IF NOT EXISTS routine_schedules (
     FOREIGN KEY(rguid) REFERENCES routines(rguid) ON DELETE CASCADE
 );
 
--- 5. Routine Exceptions (THE "GRAVE" / BURY LOGIC)
--- Records instances the expansion engine should skip or disable
+-- 5. Routine Exceptions
 CREATE TABLE IF NOT EXISTS routine_exceptions (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     reguid TEXT NOT NULL UNIQUE,
     rguid TEXT NOT NULL,
-    instanceDate DATE NOT NULL,      -- YYYY-MM-DD
-    instanceIndex INTEGER NOT NULL DEFAULT 0, -- Which occurrence to bury
+    instanceDate TEXT NOT NULL,      -- YYYY-MM-DD
+    instanceIndex INTEGER NOT NULL DEFAULT 0, 
     createDate TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     createdBy TEXT NOT NULL,
     FOREIGN KEY(rguid) REFERENCES routines(rguid) ON DELETE CASCADE
 );
 
--- 6. Routine Instances (Execution History)
+-- 6. Routine Instances
 CREATE TABLE IF NOT EXISTS routine_instances (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     riguid TEXT NOT NULL UNIQUE,
     sguid TEXT NOT NULL,
     isComplete INTEGER DEFAULT 0,
-    instanceDate DATE NOT NULL,
-    startTime TIME NOT NULL,
+    instanceDate TEXT NOT NULL,
+    startTime TEXT NOT NULL,
     duration INTEGER NOT NULL,
     createDate TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     createdBy TEXT NOT NULL,

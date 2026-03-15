@@ -7,7 +7,7 @@ import { useThemedStyles } from '../../hooks/useThemedStyles';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { shouldShowRoutineOnDate } from '../../utils/routineEngine';
-import { RoutineService, Routine, RoutineException } from '../../services/routineService';
+import { RoutineService, RoutineWithSchedule, RoutineException } from '../../services/routineService';
 
 const { width: SCREEN_WIDTH } = Dimensions.get('window');
 
@@ -35,32 +35,37 @@ export default function CalendarMonthView() {
   const [systemToday, setSystemToday] = useState(getLocalTodayString());
   const [currentMonth, setCurrentMonth] = useState(systemToday);
   const [selectedDate, setSelectedDate] = useState(systemToday);
-  const [routines, setRoutines] = useState<Routine[]>([]);
+  const [routines, setRoutines] = useState<RoutineWithSchedule[]>([]);
   const [exceptions, setExceptions] = useState<RoutineException[]>([]);
 
   let touchY = 0; 
 
+  // --- DATA SYNC ---
+  // Re-fetches routines whenever the screen gains focus or the selected date changes
   useFocusEffect(
     useCallback(() => {
       const freshToday = getLocalTodayString();
       setSystemToday(freshToday);
 
       const syncState = async () => {
-        const [savedDate, fetchedRoutines, fetchedExceptions] = await Promise.all([
-          AsyncStorage.getItem('calendar_last_date'),
-          RoutineService.getRoutines(),
-          RoutineService.getExceptions()
-        ]);
+        const savedDate = await AsyncStorage.getItem('calendar_last_date');
+        const activeDate = savedDate || freshToday;
 
         if (savedDate) {
           setSelectedDate(savedDate);
           setCurrentMonth(savedDate.substring(0, 7) + '-01');
         }
+
+        const [fetchedRoutines, fetchedExceptions] = await Promise.all([
+          RoutineService.getRoutines(activeDate),
+          RoutineService.getExceptions()
+        ]);
+
         setRoutines(fetchedRoutines);
         setExceptions(fetchedExceptions);
       };
       syncState();
-    }, [])
+    }, [selectedDate]) // Dependency ensures history loads when date changes
   );
 
   const handleDatePress = (dateString: string) => {
@@ -105,7 +110,7 @@ export default function CalendarMonthView() {
   };
 
   const handleToggleInstance = async (item: any) => {
-    const rId = item.originalId || item.id; 
+    const rId = item.originalId || item.rguid; 
     const idx = item.instanceIndex ?? 0;
     const nextEx = await RoutineService.toggleException(exceptions, rId, selectedDate, idx);
     setExceptions(nextEx);
@@ -131,33 +136,34 @@ export default function CalendarMonthView() {
   }, [selectedDate, systemToday, colors]);
 
   const displayRoutines = useMemo(() => {
-    const [y, m, d] = selectedDate.split('-').map(Number);
-    const targetDate = new Date(y, m - 1, d);
+    const [y, mon, d] = selectedDate.split('-').map(Number);
     const expandedList: any[] = [];
 
     routines.forEach(routine => {
-      if (shouldShowRoutineOnDate(routine, targetDate)) {
+      // 1. Engine checks the UTC lifespan and repeat pattern
+      if (shouldShowRoutineOnDate(routine, selectedDate)) {
         const count = routine.maxOccurrences || 1;
+        
         for (let i = 0; i < count; i++) {
           const hasException = exceptions.some(ex => 
-            ex.routineId === routine.id && ex.date === selectedDate && ex.instanceIndex === i
+            ex.routineId === routine.rguid && ex.date === selectedDate && ex.instanceIndex === i
           );
-          
-          const baseStart = routine.startTime ? new Date(routine.startTime) : new Date();
-          const baseEnd = routine.endTime ? new Date(routine.endTime) : new Date();
-          
-          const start = new Date(baseStart);
-          const end = new Date(baseEnd);
-          
+
+          // 2. Parse the 24h startTime string (HH:mm) and apply to local calendar day
+          const [h, min] = routine.startTime.split(':').map(Number);
+          const start = new Date(y, mon - 1, d, h, min, 0, 0);
+
+          // 3. Handle multiple occurrences
           if (i > 0 && routine.frequencyHours) {
             start.setHours(start.getHours() + (i * routine.frequencyHours));
-            end.setHours(end.getHours() + (i * routine.frequencyHours));
           }
+
+          const end = new Date(start.getTime() + (routine.duration || 30) * 60000);
 
           expandedList.push({ 
             ...routine, 
-            id: `${routine.id}-idx-${i}`, 
-            originalId: routine.id,
+            id: `${routine.rguid}-idx-${i}`, // UI specific ID
+            originalId: routine.rguid,
             startTime: start, 
             endTime: end, 
             instanceIndex: i, 
@@ -252,7 +258,7 @@ export default function CalendarMonthView() {
           <View style={[styles.insetGroup, { marginBottom: 12, padding: 16, flexDirection: 'row', alignItems: 'center' }]}>
             <View style={{ flex: 1, opacity: item.isInstanceEnabled ? 1 : 0.4 }}>
               <Text style={{ color: colors.text, fontSize: 17, fontWeight: '600' }}>{item.name}</Text>
-              <Text style={{ color: colors.mutedText, fontSize: 13, marginTop: 2 }}>{item.repeat || 'daily'}</Text>
+              <Text style={{ color: colors.mutedText, fontSize: 13, marginTop: 2 }}>{item.type || 'daily'}</Text>
             </View>
             <View style={{ alignItems: 'flex-end', marginRight: 12, opacity: item.isInstanceEnabled ? 1 : 0.4 }}>
               <Text style={{ color: colors.text, fontSize: 15, fontWeight: '500' }}>{formatTime(item.startTime)}</Text>
@@ -274,7 +280,6 @@ export default function CalendarMonthView() {
         localStyles.floatingFooter, 
         { bottom: insets.bottom > 0 ? insets.bottom - 16 : 4 }
       ]}>
-        {/* LEFT BUTTON: TODAY */}
         <Pressable 
           onPress={() => handleDatePress(getLocalTodayString())} 
           style={({ pressed }) => [getPressedStyle(pressed), { width: 110, height: 44 }]}
@@ -295,7 +300,6 @@ export default function CalendarMonthView() {
           </View>
         </Pressable>
 
-        {/* RIGHT BUTTON: ROUTINES */}
         <Pressable 
           onPress={() => router.push('/routines')} 
           style={({ pressed }) => [getPressedStyle(pressed), { minWidth: 130, height: 44 }]}

@@ -58,7 +58,6 @@ class DatabaseService {
                 await AsyncStorage.setItem('temp_setup_gguid', result.gguid);
                 return true;
             }
-            
             await this.seedData();
             return true;
         } catch (e) {
@@ -129,8 +128,8 @@ class DatabaseService {
             );
 
             await sqlite.runAsync(
-                `INSERT INTO routine_schedules (sguid, rguid, type, startDate, startTime, frequencyHours, maxOccurrences, createdBy, lastModifiedBy) 
-                 VALUES (?, ?, 'daily', '2026-01-01', '12:00', 4, 5, ?, ?)`,
+                `INSERT INTO routine_schedules (sguid, rguid, type, customDays, startDate, startTime, frequencyHours, maxOccurrences, createdBy, lastModifiedBy) 
+                 VALUES (?, ?, 'custom', '[1,3,5]', '2026-01-01', '12:00', 4, 5, ?, ?)`,
                 [Crypto.randomUUID(), rguid2, uguid, uguid]
             );
 

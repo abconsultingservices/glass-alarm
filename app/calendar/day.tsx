@@ -6,7 +6,7 @@ import { useThemedStyles } from '../../hooks/useThemedStyles';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { shouldShowRoutineOnDate } from '../../utils/routineEngine';
-import { RoutineService, Routine, RoutineException } from '../../services/routineService';
+import { RoutineService, RoutineWithSchedule, RoutineException } from '../../services/routineService';
 
 const { width: SCREEN_WIDTH } = Dimensions.get('window');
 
@@ -19,7 +19,7 @@ export default function DayView() {
   // --- GLASS ANIMATION SETUP ---
   const scrollY = useRef(new Animated.Value(0)).current;
 
-  // Logic: .9 (solid) to 0.65 (glassy)
+  // Syncing with Month view logic: .9 (solid) to 0.65 (glassy)
   const glassOpacity = scrollY.interpolate({
     inputRange: [0, 50],
     outputRange: [.9, 0.65],
@@ -34,10 +34,11 @@ export default function DayView() {
 
   const [systemToday, setSystemToday] = useState(getLocalTodayString());
   const [selectedDate, setSelectedDate] = useState(systemToday);
-  const [routines, setRoutines] = useState<Routine[]>([]);
+  const [routines, setRoutines] = useState<RoutineWithSchedule[]>([]);
   const [exceptions, setExceptions] = useState<RoutineException[]>([]);
   let touchX = 0;
 
+  // --- DATA SYNC ---
   useFocusEffect(
     useCallback(() => {
       const freshToday = getLocalTodayString();
@@ -45,13 +46,16 @@ export default function DayView() {
 
       const syncState = async () => {
         try {
-          const [savedDate, fetchedRoutines, fetchedExceptions] = await Promise.all([
-            AsyncStorage.getItem('calendar_last_date'),
-            RoutineService.getRoutines(),
+          const savedDate = await AsyncStorage.getItem('calendar_last_date');
+          const activeDate = savedDate || freshToday;
+          
+          if (savedDate) setSelectedDate(savedDate);
+
+          const [fetchedRoutines, fetchedExceptions] = await Promise.all([
+            RoutineService.getRoutines(activeDate),
             RoutineService.getExceptions()
           ]);
           
-          if (savedDate) setSelectedDate(savedDate);
           setRoutines(fetchedRoutines);
           setExceptions(fetchedExceptions);
         } catch (e) {
@@ -59,7 +63,7 @@ export default function DayView() {
         }
       };
       syncState();
-    }, [])
+    }, [selectedDate])
   );
 
   const updateDate = async (date: string) => {
@@ -69,7 +73,7 @@ export default function DayView() {
   };
 
   const handleToggleInstance = async (item: any) => {
-    const rId = item.originalId || item.id;
+    const rId = item.originalId || item.rguid;
     const idx = item.instanceIndex ?? 0;
     const nextEx = await RoutineService.toggleException(exceptions, rId, selectedDate, idx);
     setExceptions(nextEx);
@@ -110,30 +114,31 @@ export default function DayView() {
   };
 
   const displayRoutines = useMemo(() => {
-    const [y, m, d] = selectedDate.split('-').map(Number);
-    const targetDate = new Date(y, m - 1, d);
+    const [y, mon, d] = selectedDate.split('-').map(Number);
     const expandedList: any[] = [];
 
     routines.forEach(routine => {
-      if (shouldShowRoutineOnDate(routine, targetDate)) {
+      if (shouldShowRoutineOnDate(routine, selectedDate)) {
         const count = routine.maxOccurrences || 1;
         for (let i = 0; i < count; i++) {
           const hasException = exceptions.some(ex => 
-            ex.routineId === routine.id && ex.date === selectedDate && ex.instanceIndex === i
+            ex.routineId === routine.rguid && ex.date === selectedDate && ex.instanceIndex === i
           );
 
-          const start = new Date(routine.startTime);
-          const end = new Date(routine.endTime);
+          // Parse HH:mm string safely for the current viewed day
+          const [h, min] = routine.startTime.split(':').map(Number);
+          const start = new Date(y, mon - 1, d, h, min, 0, 0);
           
           if (i > 0 && routine.frequencyHours) {
             start.setHours(start.getHours() + (i * routine.frequencyHours));
-            end.setHours(end.getHours() + (i * routine.frequencyHours));
           }
+
+          const end = new Date(start.getTime() + (routine.duration || 30) * 60000);
 
           expandedList.push({ 
             ...routine, 
-            id: `${routine.id}-idx-${i}`, 
-            originalId: routine.id,
+            id: `${routine.rguid}-idx-${i}`, 
+            originalId: routine.rguid,
             startTime: start, 
             endTime: end, 
             instanceIndex: i,
@@ -234,7 +239,7 @@ export default function DayView() {
           <View style={[styles.insetGroup, { marginBottom: 12, padding: 16, flexDirection: 'row', alignItems: 'center' }]}>
             <View style={{ flex: 1, opacity: item.isInstanceEnabled ? 1 : 0.4 }}>
               <Text style={{ color: colors.text, fontSize: 17, fontWeight: '600' }}>{item.name}</Text>
-              <Text style={{ color: colors.mutedText, fontSize: 13, marginTop: 2 }}>{item.repeat}</Text>
+              <Text style={{ color: colors.mutedText, fontSize: 13, marginTop: 2 }}>{item.type || 'daily'}</Text>
             </View>
             <View style={{ alignItems: 'flex-end', marginRight: 12, opacity: item.isInstanceEnabled ? 1 : 0.4 }}>
               <Text style={{ color: colors.text, fontSize: 15, fontWeight: '500' }}>{formatTime(item.startTime)}</Text>

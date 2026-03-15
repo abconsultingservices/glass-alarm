@@ -1,36 +1,47 @@
-import { Routine } from '../services/routineService';
+import { RoutineWithSchedule } from '../services/routineService';
 
-/**
- * Checks if a routine should appear on a specific calendar date.
- */
-export const shouldShowRoutineOnDate = (routine: Routine, date: Date): boolean => {
-  if (!routine.isEnabled) return false;
+export const shouldShowRoutineOnDate = (item: RoutineWithSchedule, targetDateISO: string): boolean => {
+  if (!item.isEnabled) return false;
 
-  const routineStart = new Date(routine.startTime);
-  
-  // 1. Reset times to midnight for comparison
-  const compareDate = new Date(date);
-  compareDate.setHours(0, 0, 0, 0);
-  
-  const startLimit = new Date(routineStart);
-  startLimit.setHours(0, 0, 0, 0);
+  // Since SQL already filtered the start/end dates, we just check frequency
+  const dateObj = new Date(`${targetDateISO}T00:00:00Z`);
+  const dayOfWeek = dateObj.getUTCDay(); 
+  const type = item.type.toLowerCase();
 
-  // Don't show routines before they were created/scheduled
-  if (compareDate < startLimit) return false;
+  let doShow = null;
 
-  const dayOfWeek = date.getDay(); // 0 = Sunday, 1 = Monday, etc.
-
-  switch (routine.repeat?.toLowerCase()) {
-    case 'daily':
-      return true;
-    case 'weekdays':
-      return dayOfWeek >= 1 && dayOfWeek <= 5;
-    case 'weekends':
-      return dayOfWeek === 0 || dayOfWeek === 6;
+  switch (type) {
+    case 'daily': 
+      doShow = true;
+      break;
+    case 'weekdays': 
+      doShow = dayOfWeek >= 1 && dayOfWeek <= 5;
+      break;
+    case 'weekends': 
+      doShow = dayOfWeek === 0 || dayOfWeek === 6
+      break;
     case 'custom':
-      // Future logic for specific days (e.g., Mon/Wed/Fri)
-      return true;
-    default:
-      return false;
+
+      console.log(item);  
+      if (!item.customDays)
+      {
+        doShow=false;
+        break;
+      }
+      try {
+        // Expecting a string like "[1,3,5]"
+        const activeDays = JSON.parse(item.customDays);
+        doShow = activeDays.includes(dayOfWeek);
+      } catch (e) {
+        // Fallback for comma separated "1,3,5"
+        console.log('Error:' + item.customDays);
+        doShow = item.customDays.split(',').map(Number).includes(dayOfWeek);
+      }
+      break;
+    default: 
+      doShow = false;
   }
+
+  console.log('Do Show:' + doShow);
+  return doShow;
 };
