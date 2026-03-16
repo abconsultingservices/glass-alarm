@@ -143,6 +143,17 @@ export default function RootLayout() {
         input::-webkit-calendar-picker-indicator {
             filter: invert(var(--icon-invert)); /* 1 for dark theme, 0 for light */
         }
+
+        [data-glass-input="true"],
+        [data-inset-input="true"] input {
+          color: ${colors.mutedText} !important;
+          -webkit-text-fill-color: ${colors.mutedText} !important;
+        }
+
+        [data-inset-input="true"]:-webkit-autofill  {
+          color: ${colors.mutedText} !important;
+          -webkit-text-fill-color: ${colors.mutedText} !important;
+        }
       `;
       document.head.appendChild(style);
       return () => { if (document.head.contains(style)) document.head.removeChild(style); };

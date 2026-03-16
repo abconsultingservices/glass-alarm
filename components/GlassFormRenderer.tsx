@@ -20,7 +20,7 @@ interface Field {
 }
 
 interface Section {
-    sectionType: 'pills' | 'insetGroup';
+    sectionType: 'pills' | 'insetGroup' | 'tasks';
     label?: string;
     footer?: string;
     fields: Field[];
@@ -72,6 +72,8 @@ export const GlassFormRenderer = ({ schema, form, setForm, errors, setErrors }: 
         
         handleUpdate(key, JSON.stringify(nextDays));
     };
+
+    console.log(schema);
 
     return (
         <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={{ paddingBottom: 120 }}>
@@ -146,8 +148,19 @@ export const GlassFormRenderer = ({ schema, form, setForm, errors, setErrors }: 
                             if (field.type === 'switch') {
                                 return (
                                     <View key={field.key}>
-                                        <View style={{ flexDirection: 'row', alignItems: 'center', paddingHorizontal: 16, minHeight: 54, justifyContent: 'space-between' }}>
-                                            <Text style={{ fontSize: 17, color: colors.text }}>{field.label}</Text>
+                                        <View style={{ 
+                                            flexDirection: 'row', 
+                                            alignItems: 'center', 
+                                            paddingHorizontal: 16, 
+                                            minHeight: 54, 
+                                            justifyContent: 'space-between' // Ensures Left/Right split
+                                        }}>
+                                            {/* Label on the Left */}
+                                            <Text style={{ fontSize: 17, color: colors.text }}>
+                                                {field.label}
+                                            </Text>
+
+                                            {/* Switch on the Right */}
                                             <Switch 
                                                 value={!!form[field.key]} 
                                                 onValueChange={(val) => handleUpdate(field.key, val)}
@@ -203,7 +216,6 @@ export const GlassFormRenderer = ({ schema, form, setForm, errors, setErrors }: 
                             }
 
                             // --- DATE / TIME ---
-                            // Inside GlassFormRenderer.tsx
                             if (field.type === 'date' || field.type === 'time') {
                                 const isWeb = Platform.OS === 'web';
                                 const rawValue = form[field.key];
@@ -222,22 +234,20 @@ export const GlassFormRenderer = ({ schema, form, setForm, errors, setErrors }: 
 
                                 return (
                                     <View key={field.key}>
-                                        {/* The outer container is now the relative anchor for the whole row click */}
                                         <View style={{ 
                                             flexDirection: 'row', 
                                             alignItems: 'center', 
                                             paddingHorizontal: 16, 
                                             minHeight: 54, 
                                             justifyContent: 'space-between',
-                                            position: 'relative', // CRITICAL for absolute children
-                                            overflow: 'hidden'    // Keeps the hidden input contained
+                                            position: 'relative', 
+                                            overflow: 'hidden'    
                                         }}>
                                             <Text style={{ fontSize: 17, color: colors.text }}>{field.label}</Text>
                                             
                                             <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'flex-end' }}>
                                                 {isWeb ? (
                                                     <>
-                                                        {/* THE VISIBLE STYLED LAYER */}
                                                         <View style={{ flexDirection: 'row', alignItems: 'center', paddingRight: 4 }}>
                                                             <Text style={{ 
                                                                 fontSize: 18, 
@@ -257,8 +267,6 @@ export const GlassFormRenderer = ({ schema, form, setForm, errors, setErrors }: 
                                                             />
                                                         </View>
 
-                                                        {/* THE INVISIBLE INTERACTIVE LAYER */}
-                                                        {/* This input now covers the entire parent View's area */}
                                                         <input
                                                             type={field.type}
                                                             value={rawValue || ''}
@@ -295,29 +303,59 @@ export const GlassFormRenderer = ({ schema, form, setForm, errors, setErrors }: 
                                 );
                             }
 
-                            // --- TEXT INPUT ---
+                            // --- TEXT INPUT (UPDATED FOR iOS ALARM STYLE) ---
                             return (
                                 <View key={field.key} style={{ marginBottom: isPill ? (hasError ? 4 : 16) : 0 }}>
                                     <View style={isPill ? [styles.inputContainer, hasError && { borderColor: colors.error, borderWidth: 1.5 }] : [styles.inputRow, { position: 'relative' }]}>
-                                        <View style={{ flex: 1, justifyContent: 'center' }}>
-                                            <TextInput 
-                                                style={[styles.inputField, !isPill && { paddingRight: 48 }]} 
-                                                value={form[field.key] ?? ''} 
-                                                placeholder={field.label} 
-                                                placeholderTextColor={colors.placeholderText} 
-                                                onChangeText={(t) => handleUpdate(field.key, t, field.validation, field.overrideFilter, field.type)} 
-                                                secureTextEntry={field.type === 'password'} 
-                                                keyboardType={field.type === 'email' ? 'email-address' : field.type === 'phone' ? 'phone-pad' : field.type === 'url' ? 'url' : 'default'} 
-                                                {...cleanConfig}/>
-                                        </View>
-                                        <View style={{ position: 'absolute', right: isPill ? 12 : 16, flexDirection: 'row', alignItems: 'center' }}>
+                                        <View style={{ 
+                                            flexDirection: 'row', 
+                                            alignItems: 'center', 
+                                            width: '100%',
+                                            paddingHorizontal: isPill ? 0 : 16,
+                                            minHeight: isPill ? 0 : 54
+                                        }}>
+                                            {/* Label on the Left (for Inset Groups) */}
+                                            {!isPill && (
+                                                <Text style={{ 
+                                                    fontSize: 17, 
+                                                    color: colors.text,
+                                                    marginRight: 10 
+                                                }}>
+                                                    {field.label}
+                                                </Text>
+                                            )}
+
+                                            <View style={{ flex: 1, justifyContent: 'center' }}>
+                                                <TextInput 
+                                                    style={[
+                                                        styles.inputField, 
+                                                        !isPill && { 
+                                                            textAlign: 'right', 
+                                                            paddingRight: (form[field.key] && form[field.key].length > 0) ? 32 : 0,
+                                                            color: colors.mutedText 
+                                                        }
+                                                    ]} 
+                                                    value={form[field.key] ?? ''} 
+                                                    placeholder={isPill ? field.label : ''} 
+                                                    placeholderTextColor={colors.placeholderText} 
+                                                    onChangeText={(t) => handleUpdate(field.key, t, field.validation, field.overrideFilter, field.type)} 
+                                                    secureTextEntry={field.type === 'password'} 
+                                                    keyboardType={field.type === 'email' ? 'email-address' : field.type === 'phone' ? 'phone-pad' : field.type === 'url' ? 'url' : 'default'} 
+                                                    dataSet={{ 'glass-input': 'true', 'inset-input': !isPill }}
+                                                    {...cleanConfig} 
+                                                />
+                                            </View>
+                                            
+                                            {/* Clear Button Logic */}
                                             {!!(form[field.key] && form[field.key].length > 0) && (
-                                                <Pressable 
-                                                    onPress={() => handleUpdate(field.key, '', field.validation)} 
-                                                    style={({ pressed }) => [getPressedStyle(pressed), { padding: 4 }]}
-                                                >
-                                                    <Ionicons name="close-circle" size={18} color={hasError ? colors.error : colors.placeholderText} />
-                                                </Pressable>
+                                                <View style={{ position: 'absolute', right: isPill ? 12 : 16 }}>
+                                                    <Pressable 
+                                                        onPress={() => handleUpdate(field.key, '', field.validation)} 
+                                                        style={({ pressed }) => [getPressedStyle(pressed), { padding: 4 }]}
+                                                    >
+                                                        <Ionicons name="close-circle" size={18} color={hasError ? colors.error : colors.placeholderText} />
+                                                    </Pressable>
+                                                </View>
                                             )}
                                         </View>
                                     </View>

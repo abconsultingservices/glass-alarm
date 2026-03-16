@@ -48,7 +48,7 @@ export const fieldRegistry: Record<string, Record<string, RegistryField>> = {
             label: 'Duration (Mins)',
             config: { keyboardType: 'number-pad', placeholder: '30' }
         },
-        isActive: {
+        isEnabled: {
             label: 'Routine Enabled',
             type: 'switch',
             config: { defaultValue: true }
@@ -89,6 +89,7 @@ export const fieldRegistry: Record<string, Record<string, RegistryField>> = {
             config: { keyboardType: 'number-pad', placeholder: '4' }
         },
         maxOccurrences: {
+            type: 'text',
             label: 'Max Hits Per Day',
             config: { keyboardType: 'number-pad', placeholder: '3' }
         }

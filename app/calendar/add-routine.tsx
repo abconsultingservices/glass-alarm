@@ -18,10 +18,12 @@ export default function AddRoutine() {
     // --- DYNAMIC SCHEMA GENERATION ---
     const schema = useMemo(() => [
         {
-            sectionType: 'pills' as const,
+            sectionType: 'insetGroup' as const,
+            label: 'ROUTINE INFO',
             fields: [
                 { key: 'name', ...fieldRegistry.routines.name },
                 { key: 'duration', ...fieldRegistry.routines.duration },
+                { key: 'isEnabled', ...fieldRegistry.routines.isEnabled },
             ]
         },
         {
@@ -39,11 +41,21 @@ export default function AddRoutine() {
 
     const [form, setForm] = useState(() => {
         const initial = getInitialFormState(schema);
+        // Look through the schema to apply any defaultValue from config
+        schema.forEach(section => {
+            section.fields.forEach(field => {
+                if (field.config?.defaultValue !== undefined) {
+                    initial[field.key] = field.config.defaultValue;
+                }
+            });
+        });
+
         return { 
-            ...initial, 
-            type: 'daily', 
-            startDate: new Date().toISOString().split('T')[0],
-            startTime: '08:00',
+            ...initial,
+            // Keep your other overrides here
+            type: initial.type || 'daily', 
+            startDate: initial.startDate || new Date().toISOString().split('T')[0],
+            startTime: initial.startTime || '08:00',
             duration: '30'
         };
     });
