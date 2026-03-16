@@ -1,6 +1,6 @@
 import React, { useState, useRef, useMemo, useCallback } from 'react';
 import { View, Text, Pressable, Animated, ScrollView, Platform } from 'react-native';
-import { useRouter, useFocusEffect } from 'expo-router'; // Added useFocusEffect
+import { useRouter, useFocusEffect } from 'expo-router'; 
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { dbService } from '../../services/DatabaseService';
 import { useThemedStyles } from '../../hooks/useThemedStyles';
@@ -8,7 +8,7 @@ import { GlassFormRenderer } from '../../components/GlassFormRenderer';
 import { getInitialFormState, getInitialErrorState, validateValue } from '../../utils/ValidationEngine';
 import { fieldRegistry } from '../../services/FieldRegistry';
 import { Ionicons } from '@expo/vector-icons';
-import AsyncStorage from '@react-native-async-storage/async-storage'; // Added AsyncStorage
+import AsyncStorage from '@react-native-async-storage/async-storage'; 
 
 export default function AddRoutine() {
     const router = useRouter();
@@ -24,6 +24,7 @@ export default function AddRoutine() {
                 { key: 'name', ...fieldRegistry.routines.name },
                 { key: 'duration', ...fieldRegistry.routines.duration },
                 { key: 'isEnabled', ...fieldRegistry.routines.isEnabled },
+                { key: 'repeatType', ...fieldRegistry.routine_schedules.repeatType },
             ]
         },
         {
@@ -41,7 +42,6 @@ export default function AddRoutine() {
 
     const [form, setForm] = useState(() => {
         const initial = getInitialFormState(schema);
-        // Look through the schema to apply any defaultValue from config
         schema.forEach(section => {
             section.fields.forEach(field => {
                 if (field.config?.defaultValue !== undefined) {
@@ -52,11 +52,11 @@ export default function AddRoutine() {
 
         return { 
             ...initial,
-            // Keep your other overrides here
             type: initial.type || 'daily', 
             startDate: initial.startDate || new Date().toISOString().split('T')[0],
             startTime: initial.startTime || '08:00',
-            duration: '30'
+            duration: '30',
+            tasks: [] // Initialize task list for the Tasks tab
         };
     });
 
@@ -65,7 +65,6 @@ export default function AddRoutine() {
     const shakeAnim = useRef(new Animated.Value(0)).current;
 
     // --- SELECTION ROUND-TRIP HANDLER ---
-    // Listens for updates from selection-view.tsx when the screen regains focus
     useFocusEffect(
         useCallback(() => {
             const checkSelections = async () => {
@@ -79,8 +78,19 @@ export default function AddRoutine() {
         }, [])
     );
 
-    // --- RE-CALCULATE SCHEMA BASED ON SELECTION ---
+    // --- RE-CALCULATE SCHEMA BASED ON TAB & SELECTION ---
     const activeSchema = useMemo(() => {
+        // If we are on the Tasks tab, return the task list schema
+        if (activeTab === 'Tasks') {
+            return [{
+                sectionType: 'tasks' as const,
+                label: 'ROUTINE TASKS',
+                footer: 'Add steps to your routine. Long-press the handle to reorder.',
+                fields: [] 
+            }];
+        }
+
+        // Otherwise, return the standard Routine settings
         const base = JSON.parse(JSON.stringify(schema));
         if (form.type === 'custom') {
             base[1].fields.push({ key: 'customDays', ...fieldRegistry.routine_schedules.customDays });
@@ -88,7 +98,7 @@ export default function AddRoutine() {
         base[1].fields.push({ key: 'frequencyHours', ...fieldRegistry.routine_schedules.frequencyHours });
         base[1].fields.push({ key: 'maxOccurrences', ...fieldRegistry.routine_schedules.maxOccurrences });
         return base;
-    }, [form.type, schema]);
+    }, [form.type, schema, activeTab]);
 
     const hasErrors = useMemo(() => {
         const hasActiveErrors = Object.values(errors).some(e => !!e);
@@ -109,7 +119,8 @@ export default function AddRoutine() {
         const newErrors: any = {};
         let hasValidationError = false;
 
-        activeSchema.forEach((section: any) => {
+        // Final validation sweep (Routine settings are mandatory)
+        schema.forEach((section: any) => {
             section.fields.forEach((field: any) => {
                 if (field.validation) {
                     const errorMsg = validateValue(form[field.key], field.validation);
@@ -122,6 +133,7 @@ export default function AddRoutine() {
         });
 
         if (hasValidationError) {
+            setActiveTab('Routine'); // Snap back to settings tab so they see what's wrong
             setErrors(newErrors);
             triggerShake();
             return;
@@ -135,7 +147,8 @@ export default function AddRoutine() {
             endTime: null,
             customDays: form.type === 'custom' ? form.customDays : null,
             frequencyHours: form.frequencyHours ? parseInt(form.frequencyHours) : null,
-            maxOccurrences: form.maxOccurrences ? parseInt(form.maxOccurrences) : 1
+            maxOccurrences: form.maxOccurrences ? parseInt(form.maxOccurrences) : 1,
+            tasks: form.tasks // Pass the task array to the DB service
         });
 
         if (success) router.back();

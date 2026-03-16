@@ -79,6 +79,16 @@ export const fieldRegistry: Record<string, Record<string, RegistryField>> = {
                 { label: 'Custom', value: 'custom' },
             ]
         },
+        repeatType: {
+            label: 'Repeat Type',
+            type: 'select',
+            options: [
+                { label: 'Daily', value: 'daily' },
+                { label: 'Weekdays', value: 'weekdays' },
+                { label: 'Weekends', value: 'weekends' },
+                { label: 'Custom', value: 'custom' },
+            ]
+        },
         customDays: {
             label: 'Select Days',
             type: 'customDays',

@@ -5,6 +5,7 @@ import { Platform, View, ActivityIndicator } from "react-native";
 import { useThemedStyles } from '../hooks/useThemedStyles';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { dbService } from '../services/DatabaseService';
+import { GestureHandlerRootView } from 'react-native-gesture-handler';
 
 export default function RootLayout() {
   const { isDark, colors } = useThemedStyles(); 
@@ -41,7 +42,6 @@ export default function RootLayout() {
           } else if (lastView === 'month') {
             router.replace('/calendar');
           }
-          // If no lastView, it stays on the 'index' (usually Welcome or Setup)
         }
       } catch (e) {
         console.error("Failed to initialize app state", e);
@@ -93,23 +93,11 @@ export default function RootLayout() {
         }
 
         /* Liquid Glass Web Picker Overrides */
-        /* Add to your global CSS or index.html <style> tag */
         @media (prefers-color-scheme: dark) {
-            input[type="date"], input[type="time"] {
-                color-scheme: dark;
-            }
+            :root { color-scheme: dark; }
+            input[type="date"], input[type="time"] { color-scheme: dark; }
         }
 
-        /* Custom fonts for the fields */
-        input {
-            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
-        }
-
-       input[type="date"], input[type="time"] {
-            position: relative;
-        }
-
-        /* This forces the browser's hidden "click area" to fill the entire container */
         input[type="date"]::-webkit-calendar-picker-indicator,
         input[type="time"]::-webkit-calendar-picker-indicator {
             position: absolute;
@@ -121,6 +109,7 @@ export default function RootLayout() {
             padding: 0;
             cursor: pointer;
             opacity: 0; /* Keeps it invisible while allowing click-through */
+            z-index: 10;
         }
 
         /* Fix for the white popover context on web */
@@ -170,30 +159,40 @@ export default function RootLayout() {
   }
 
   return (
-    <ThemeProvider value={isDark ? DarkTheme : DefaultTheme}>
-      <Stack screenOptions={{ headerShown: false }}>
-        <Stack.Screen name="index" />
-        <Stack.Screen name="setup" />
-        <Stack.Screen name="calendar/index" />
-        <Stack.Screen name="calendar/year" />
-        <Stack.Screen 
-          name="calendar/add-routine" 
-          options={{ 
-            presentation: 'modal', // Key for bottom-up slide
-            headerShown: false,
-            gestureEnabled: true,
-          }} 
-        />
-        <Stack.Screen name="settings" />
-        <Stack.Screen 
-          name="edit/[field]" 
-          options={{ 
-            presentation: 'modal', 
-            gestureEnabled: true,
-            animation: 'slide_from_bottom' 
-          }} 
-        />
-      </Stack>
-    </ThemeProvider>
+    <GestureHandlerRootView style={{ flex: 1 }}>
+      <ThemeProvider value={isDark ? DarkTheme : DefaultTheme}>
+        <Stack screenOptions={{ headerShown: false }}>
+          <Stack.Screen name="index" />
+          <Stack.Screen name="setup" />
+          <Stack.Screen name="calendar/index" />
+          <Stack.Screen name="calendar/year" />
+          <Stack.Screen 
+            name="calendar/add-routine" 
+            options={{ 
+              presentation: 'modal',
+              headerShown: false,
+              gestureEnabled: true,
+            }} 
+          />
+          <Stack.Screen 
+            name="calendar/selection-view" 
+            options={{ 
+              presentation: 'transparentModal',
+              animation: 'slide_from_right',
+              headerShown: false,
+            }} 
+          />
+          <Stack.Screen name="settings" />
+          <Stack.Screen 
+            name="edit/[field]" 
+            options={{ 
+              presentation: 'modal', 
+              gestureEnabled: true,
+              animation: 'slide_from_bottom' 
+            }} 
+          />
+        </Stack>
+      </ThemeProvider>
+    </GestureHandlerRootView>
   );
 }
