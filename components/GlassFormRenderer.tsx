@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useRef } from 'react';
 import { View, Text, TextInput, Pressable, ScrollView, Platform, Switch, StyleSheet, Modal } from 'react-native';
 import { useRouter } from 'expo-router';
 import { useThemedStyles } from '../hooks/useThemedStyles';
@@ -40,7 +40,7 @@ interface Props {
 }
 
 const formatDisplayValue = (rawValue: string, type: string) => {
-    if (!rawValue) return type === 'date' ? 'yyyy-mm-dd' : '--:--';
+    if (!rawValue || rawValue === '') return 'Not set';
     if (type === 'time') {
         const [h, m] = rawValue.split(':');
         const hh = parseInt(h);
@@ -91,7 +91,7 @@ const GlassTaskList = ({ tasks, onUpdate, styles, colors, getPressedStyle, setSc
                 />
                 <Pressable
                     onPress={() => onUpdate([...(tasks || []), { id: Date.now().toString(), text: '', completed: false }])}
-                    style={({ pressed }) => [getPressedStyle(pressed), { flexDirection: 'row', alignItems: 'center', justifyContent: 'left', padding: 16 }]}
+                    style={({ pressed }) => [getPressedStyle(pressed), { flexDirection: 'row', alignItems: 'center', justifyContent: 'flex-start', padding: 16 }]}
                 >
                     <Ionicons name="add-circle" size={20} color={colors.text} style={{ opacity: 0.7 }} />
                     <Text style={{ color: colors.text, fontSize: 15, marginLeft: 8, fontWeight: '500' }}>Add Task</Text>
@@ -109,10 +109,11 @@ export const GlassFormRenderer = ({ schema, form, setForm, errors, setErrors }: 
     const [activeMenuField, setActiveMenuField] = useState<Field | null>(null);
     const [activeMenuIndex, setActiveMenuIndex] = useState<number | null>(null);
 
+    const inputRefs = useRef<{[key: string]: any}>({});
+
     const handleUpdate = (key: string, val: any, rules: ValidationRule[] = [], overrideFilter?: RegExp, type?: string, index?: number, repeaterKey?: string) => {
         let filteredVal = val;
         const nonTextTypes = ['date', 'time', 'switch', 'customDays', 'select-nav', 'select'];
-        
         if (typeof val === 'string' && !nonTextTypes.includes(type || '')) {
             if (overrideFilter) filteredVal = val.replace(overrideFilter, '');
             else {
@@ -125,14 +126,12 @@ export const GlassFormRenderer = ({ schema, form, setForm, errors, setErrors }: 
 
         if (repeaterKey && typeof index === 'number') {
             setForm((prev: any) => {
-                // DEEP COPY the array to break all references
                 const updatedArray = JSON.parse(JSON.stringify(prev[repeaterKey] || []));
                 if (updatedArray[index]) {
                     updatedArray[index][key] = filteredVal;
                 }
                 return { ...prev, [repeaterKey]: updatedArray };
             });
-            
             const errorKey = `${repeaterKey}.${index}.${key}`;
             const errorMsg = validateValue(filteredVal, rules);
             setErrors((prev: any) => ({ ...prev, [errorKey]: errorMsg }));
@@ -144,31 +143,16 @@ export const GlassFormRenderer = ({ schema, form, setForm, errors, setErrors }: 
     };
 
     const toggleDay = (key: string, dayIndex: number, index?: number, repeaterKey?: string) => {
-        const currentVal = (repeaterKey && typeof index === 'number') 
-            ? form[repeaterKey]?.[index]?.[key] 
-            : form[key];
-            
+        const currentVal = (repeaterKey && typeof index === 'number') ? form[repeaterKey]?.[index]?.[key] : form[key];
         let currentDays: number[] = [];
-        try { 
-            currentDays = typeof currentVal === 'string' ? JSON.parse(currentVal) : (currentVal || []); 
-        } catch (e) { 
-            currentDays = []; 
-        }
-        
-        const nextDays = currentDays.includes(dayIndex) 
-            ? currentDays.filter(d => d !== dayIndex) 
-            : [...currentDays, dayIndex].sort();
-            
+        try { currentDays = typeof currentVal === 'string' ? JSON.parse(currentVal) : (currentVal || []); } catch (e) { currentDays = []; }
+        const nextDays = currentDays.includes(dayIndex) ? currentDays.filter(d => d !== dayIndex) : [...currentDays, dayIndex].sort();
         handleUpdate(key, JSON.stringify(nextDays), [], undefined, 'customDays', index, repeaterKey);
     };
 
     const renderField = (field: Field, isLast: boolean, section: Section, sIdx: number, index?: number, repeaterKey?: string) => {
         if (field.key === 'customDays') {
-            const currentType = (repeaterKey && typeof index === 'number') 
-                ? form[repeaterKey]?.[index]?.type 
-                : form.type;
-            
-            // If type isn't 'custom', we return null (hide the field)
+            const currentType = (repeaterKey && typeof index === 'number') ? form[repeaterKey]?.[index]?.type : form.type;
             if (currentType !== 'custom') return null;
         }
         
@@ -176,52 +160,109 @@ export const GlassFormRenderer = ({ schema, form, setForm, errors, setErrors }: 
         const hasError = !!errors[errorKey];
         const isPill = section.sectionType === 'pills';
         const isReadOnly = section.readOnly || field.mode === 'view' || !!field.destination;
-        
-        const currentVal = (repeaterKey && typeof index === 'number') 
-            ? form[repeaterKey]?.[index]?.[field.key] 
-            : form[field.key];
-            
+        const currentVal = (repeaterKey && typeof index === 'number') ? form[repeaterKey]?.[index]?.[field.key] : form[field.key];
         const valStr = String(currentVal ?? '');
-        const hasValue = valStr.length > 0;
+        const hasValue = valStr.length > 0 && valStr !== '';
+        
         const { defaultValue, ...cleanConfig } = field.config || {};
+        const displayLabel = field.label.replace(/\(Optional\)/gi, '').trim();
 
         return (
             <View key={`f-row-${sIdx}-${field.key}-${index ?? 'm'}`}>
                 {(() => {
                     if (isReadOnly) {
                         return (
-                            <Pressable
-                                disabled={!field.destination}
-                                onPress={() => field.destination && router.push(field.destination as any)}
-                                style={({ pressed }) => [{ flexDirection: 'row', alignItems: 'center', paddingHorizontal: 16, minHeight: 54, justifyContent: 'space-between' }, field.destination && getPressedStyle(pressed)]}
-                            >
-                                <Text style={{ fontSize: 17, color: colors.text }}>{field.label}</Text>
+                            <Pressable disabled={!field.destination} onPress={() => field.destination && router.push(field.destination as any)} style={({ pressed }) => [{ flexDirection: 'row', alignItems: 'center', paddingHorizontal: 16, minHeight: 54, justifyContent: 'space-between' }, field.destination && getPressedStyle(pressed)]}>
+                                <Text style={{ fontSize: 17, color: colors.text }}>{displayLabel}</Text>
                                 <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'flex-end', flex: 1, marginLeft: 20 }}>
-                                    <Text numberOfLines={1} style={{ fontSize: 17, color: colors.mutedText, textAlign: 'right', marginRight: field.destination ? 8 : 0 }}>
-                                        {currentVal || 'Not set'}
-                                    </Text>
+                                    <Text numberOfLines={1} style={{ fontSize: 17, color: colors.mutedText, textAlign: 'right', marginRight: field.destination ? 8 : 0 }}>{currentVal || 'Not set'}</Text>
                                     {field.destination && <Ionicons name="chevron-forward" size={16} color={colors.mutedText} style={{ opacity: 0.5 }} />}
                                 </View>
                             </Pressable>
                         );
                     }
 
+                    if (field.type === 'date' || field.type === 'time') {
+                        const isDate = field.type === 'date';
+                        const isOptional = field.key.toLowerCase().includes('end');
+
+                        if (Platform.OS === 'web') {
+                            const refKey = `${field.key}-${index ?? 'main'}`;
+                            return (
+                                <View style={{ flexDirection: 'row', alignItems: 'center', paddingHorizontal: 16, minHeight: 54, justifyContent: 'space-between' }}>
+                                    <Text style={{ fontSize: 17, color: colors.text, flex: 1 }}>{displayLabel}</Text>
+                                    <Pressable 
+                                        onPress={() => inputRefs.current[refKey]?.showPicker?.()} 
+                                        style={({ pressed }) => [
+                                            { backgroundColor: 'rgba(255,255,255,0.08)', paddingHorizontal: 14, paddingVertical: 6, borderRadius: 20 },
+                                            getPressedStyle(pressed)
+                                        ]}
+                                    >
+                                        <Text style={{ fontSize: 17, color: hasValue ? colors.text : colors.placeholderText }}>
+                                            {hasValue ? (isDate ? currentVal : formatDisplayValue(currentVal, 'time')) : 'Not set'}
+                                        </Text>
+                                        <input 
+                                            ref={el => inputRefs.current[refKey] = el}
+                                            type={field.type} 
+                                            value={currentVal || ""}
+                                            onChange={(e) => handleUpdate(field.key, e.target.value, [], undefined, field.type, index, repeaterKey)}
+                                            style={{ position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, opacity: 0, cursor: 'pointer', width: '100%' }}
+                                        />
+                                    </Pressable>
+                                </View>
+                            );
+                        }
+
+                        const dateObj = new Date(hasValue ? (isDate ? `${currentVal}T00:00:00` : `1970-01-01T${currentVal}`) : Date.now());
+                        
+                        return (
+                            <View style={{ flexDirection: 'row', alignItems: 'center', paddingHorizontal: 16, minHeight: 54, justifyContent: 'space-between' }}>
+                                <Text style={{ fontSize: 17, color: colors.text, flex: 1 }} numberOfLines={1}>{displayLabel}</Text>
+                                
+                                <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'flex-end' }}>
+                                    {!hasValue ? (
+                                        <Pressable 
+                                            onPress={() => handleUpdate(field.key, isDate ? new Date().toISOString().split('T')[0] : '08:00', [], undefined, field.type, index, repeaterKey)}
+                                            style={({ pressed }) => [getPressedStyle(pressed), { paddingHorizontal: 12, paddingVertical: 6, backgroundColor: 'rgba(255,255,255,0.08)', borderRadius: 20 }]}
+                                        >
+                                            <Text style={{ fontSize: 17, color: colors.placeholderText }}>Not set</Text>
+                                        </Pressable>
+                                    ) : (
+                                        <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+                                            <DateTimePicker 
+                                                value={isNaN(dateObj.getTime()) ? new Date() : dateObj} 
+                                                mode={field.type} 
+                                                display="compact" 
+                                                onChange={(e, d) => {
+                                                    if (d) {
+                                                        handleUpdate(field.key, isDate ? d.toISOString().split('T')[0] : d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', hour12: false }), [], undefined, field.type, index, repeaterKey);
+                                                    }
+                                                }} 
+                                                textColor={colors.text} 
+                                                themeVariant={colors.isDark ? 'dark' : 'light'} 
+                                            />
+                                            {isOptional && (
+                                                <Pressable 
+                                                    onPress={() => handleUpdate(field.key, '', [], undefined, field.type, index, repeaterKey)}
+                                                    style={({ pressed }) => [getPressedStyle(pressed), { marginLeft: 10, padding: 2 }]}
+                                                >
+                                                    <Ionicons name="close-circle" size={22} color={colors.mutedText} style={{ opacity: 0.6 }} />
+                                                </Pressable>
+                                            )}
+                                        </View>
+                                    )}
+                                </View>
+                            </View>
+                        );
+                    }
+
                     if (field.type === 'select') {
                         const activeOption = field.options?.find(o => o.value === currentVal);
                         return (
-                            <Pressable 
-                                onPress={() => { 
-                                    setActiveMenuField({ ...field }); 
-                                    setActiveMenuIndex(index ?? null);
-                                    setMenuVisible(true); 
-                                }}
-                                style={({ pressed }) => [{ flexDirection: 'row', alignItems: 'center', paddingHorizontal: 16, minHeight: 54, justifyContent: 'space-between' }, getPressedStyle(pressed)]}
-                            >
-                                <Text style={{ fontSize: 17, color: colors.text }}>{field.label}</Text>
+                            <Pressable onPress={() => { setActiveMenuField({ ...field }); setActiveMenuIndex(index ?? null); setMenuVisible(true); }} style={({ pressed }) => [{ flexDirection: 'row', alignItems: 'center', paddingHorizontal: 16, minHeight: 54, justifyContent: 'space-between' }, getPressedStyle(pressed)]}>
+                                <Text style={{ fontSize: 17, color: colors.text }}>{displayLabel}</Text>
                                 <View style={{ flexDirection: 'row', alignItems: 'center' }}>
-                                    <Text style={{ fontSize: 17, color: colors.mutedText, marginRight: 4 }}>
-                                        {activeOption?.label || 'None'}
-                                    </Text>
+                                    <Text style={{ fontSize: 17, color: colors.mutedText, marginRight: 4 }}>{activeOption?.label || 'None'}</Text>
                                     <Ionicons name="chevron-expand" size={16} color={colors.mutedText} style={{ opacity: 0.6 }} />
                                 </View>
                             </Pressable>
@@ -235,17 +276,14 @@ export const GlassFormRenderer = ({ schema, form, setForm, errors, setErrors }: 
                                 onPress={() => router.push({
                                     pathname: '/calendar/selection-view',
                                     params: { 
-                                        key: field.key, 
-                                        title: field.label, 
-                                        currentValue: currentVal, 
-                                        options: JSON.stringify(field.options),
+                                        key: field.key, title: field.label, currentValue: currentVal, options: JSON.stringify(field.options),
                                         index: index !== undefined ? index.toString() : undefined,
                                         repeaterKey: repeaterKey ?? undefined
                                     }
                                 })}
                                 style={({ pressed }) => [getPressedStyle(pressed), { flexDirection: 'row', alignItems: 'center', paddingHorizontal: 16, minHeight: 54, justifyContent: 'space-between' }]}
                             >
-                                <Text style={{ fontSize: 17, color: colors.text }}>{field.label}</Text>
+                                <Text style={{ fontSize: 17, color: colors.text }}>{displayLabel}</Text>
                                 <View style={{ flexDirection: 'row', alignItems: 'center' }}>
                                     <Text style={{ fontSize: 17, color: colors.mutedText, marginRight: 8 }}>{activeOption?.label || currentVal || 'Daily'}</Text>
                                     <Ionicons name="chevron-forward" size={16} color={colors.mutedText} style={{ opacity: 0.5 }} />
@@ -257,7 +295,7 @@ export const GlassFormRenderer = ({ schema, form, setForm, errors, setErrors }: 
                     if (field.type === 'switch') {
                         return (
                             <View style={{ flexDirection: 'row', alignItems: 'center', paddingHorizontal: 16, minHeight: 54, justifyContent: 'space-between' }}>
-                                <Text style={{ fontSize: 17, color: colors.text }}>{field.label}</Text>
+                                <Text style={{ fontSize: 17, color: colors.text }}>{displayLabel}</Text>
                                 <Switch value={!!currentVal} onValueChange={(val) => handleUpdate(field.key, val, [], undefined, 'switch', index, repeaterKey)} trackColor={{ false: colors.glassBorder, true: colors.success }} thumbColor={Platform.OS === 'ios' ? undefined : '#FFFFFF'} />
                             </View>
                         );
@@ -268,7 +306,7 @@ export const GlassFormRenderer = ({ schema, form, setForm, errors, setErrors }: 
                         const selected = typeof currentVal === 'string' ? JSON.parse(currentVal || '[]') : [];
                         return (
                             <View style={{ padding: 16 }}>
-                                <Text style={localStyles.subLabel}>{field.label}</Text>
+                                <Text style={localStyles.subLabel}>{displayLabel}</Text>
                                 <View style={{ flexDirection: 'row', justifyContent: 'space-between' }}>
                                     {days.map((day, dIdx) => (
                                         <Pressable key={dIdx} onPress={() => toggleDay(field.key, dIdx, index, repeaterKey)} style={({ pressed }) => [getPressedStyle(pressed), { width: 40, height: 40, borderRadius: 20, alignItems: 'center', justifyContent: 'center', backgroundColor: selected.includes(dIdx) ? colors.text : colors.glassBackground }]}>
@@ -280,36 +318,16 @@ export const GlassFormRenderer = ({ schema, form, setForm, errors, setErrors }: 
                         );
                     }
 
-                    if (field.type === 'date' || field.type === 'time') {
-                        const dateObj = new Date(currentVal ? (field.type === 'date' ? `${currentVal}T00:00:00` : `2000-01-01T${currentVal}`) : Date.now());
-                        return (
-                            <View style={{ flexDirection: 'row', alignItems: 'center', paddingHorizontal: 16, minHeight: 54, justifyContent: 'space-between' }}>
-                                <Text style={{ fontSize: 17, color: colors.text }}>{field.label}</Text>
-                                <DateTimePicker 
-                                    value={isNaN(dateObj.getTime()) ? new Date() : dateObj} 
-                                    mode={field.type} 
-                                    display="compact" 
-                                    onChange={(e, d) => d && handleUpdate(field.key, field.type === 'date' ? d.toISOString().split('T')[0] : d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', hour12: false }), [], undefined, field.type, index, repeaterKey)} 
-                                    textColor={colors.text} 
-                                    themeVariant={colors.isDark ? 'dark' : 'light'} 
-                                />
-                            </View>
-                        );
-                    }
-
                     return (
                         <View style={isPill ? [styles.inputContainer, hasError && { borderColor: colors.error, borderWidth: 1.5 }] : [styles.inputRow]}>
                             <View style={{ flexDirection: 'row', alignItems: 'center', width: '100%', paddingHorizontal: isPill ? 0 : 16, minHeight: 54 }}>
-                                {!isPill && <Text style={{ fontSize: 17, color: colors.text, marginRight: 10 }}>{field.label}</Text>}
+                                {!isPill && <Text style={{ fontSize: 17, color: colors.text, marginRight: 10 }}>{displayLabel}</Text>}
                                 <View style={{ flex: 1, justifyContent: 'center' }}>
                                     <TextInput 
                                         style={[styles.inputField, !isPill && { textAlign: 'right', paddingRight: hasValue ? 30 : 0, color: colors.mutedText }]} 
-                                        value={valStr} 
-                                        placeholder={isPill ? field.label : ''}
-                                        placeholderTextColor={colors.placeholderText} 
+                                        value={valStr} placeholder={isPill ? field.label : ''} placeholderTextColor={colors.placeholderText} 
                                         onChangeText={(t) => handleUpdate(field.key, t, field.validation, undefined, undefined, index, repeaterKey)} 
-                                        dataSet={{ 'glass-input': 'true', 'inset-input': !isPill ? 'true' : 'false' }}
-                                        {...cleanConfig} 
+                                        dataSet={{ 'glass-input': 'true', 'inset-input': !isPill ? 'true' : 'false' }} {...cleanConfig} 
                                     />
                                 </View>
                                 {hasValue && (
@@ -364,7 +382,6 @@ export const GlassFormRenderer = ({ schema, form, setForm, errors, setErrors }: 
                                                 startTime: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', hour12: false }),
                                                 startDate: new Date().toISOString().split('T')[0]
                                             });
-                                            // Ensure deep clone to separate from any previous block state
                                             return { ...prev, [section.repeaterKey!]: [...(prev[section.repeaterKey!] || []), JSON.parse(JSON.stringify(newItem))] };
                                         });
                                     }}
@@ -391,7 +408,6 @@ export const GlassFormRenderer = ({ schema, form, setForm, errors, setErrors }: 
                             {activeMenuField?.options?.map((opt, i) => {
                                 const repeaterSection = schema.find(s => s.isRepeater && s.fields.some(f => f.key === activeMenuField.key));
                                 const repeaterKey = repeaterSection?.repeaterKey;
-                                
                                 const currentVal = (repeaterKey && typeof activeMenuIndex === 'number') 
                                     ? form[repeaterKey]?.[activeMenuIndex]?.[activeMenuField.key] 
                                     : form[activeMenuField.key];
