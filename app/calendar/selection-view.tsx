@@ -1,22 +1,29 @@
 import React from 'react';
-import { View, Text, Pressable, ScrollView, StyleSheet, Platform } from 'react-native';
+import { View, Text, Pressable, ScrollView, Platform, DeviceEventEmitter } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { useThemedStyles } from '../../hooks/useThemedStyles';
-import AsyncStorage from '@react-native-async-storage/async-storage';
 
 export default function SelectionView() {
     const router = useRouter();
-    const { key, title, currentValue, options } = useLocalSearchParams();
+    const { key, title, currentValue, options, index, repeaterKey } = useLocalSearchParams();
 
     const insets = useSafeAreaInsets();
     const { colors, styles, getPressedStyle } = useThemedStyles();
     
-    const parsedOptions = JSON.parse(options as string);
+    const parsedOptions = JSON.parse(options as string || '[]');
 
-    const handleSelect = async (val: string) => {
-        await AsyncStorage.setItem(`selection_temp_${key}`, val);
+    const handleSelect = (val: string) => {
+        // Emit the event to the listener in AddRoutine
+        DeviceEventEmitter.emit('FORM_FIELD_UPDATE', {
+            key,
+            value: val,
+            index: index !== undefined ? parseInt(index as string) : undefined,
+            repeaterKey
+        });
+        
+        // Go back normally without pushing new params into the URL (prevents reset)
         router.back();
     };
 
@@ -30,20 +37,17 @@ export default function SelectionView() {
                 </Pressable>
                 
                 <Text style={styles.modalTitle}>{title}</Text>
-                
-                {/* Empty View to balance the title centering */}
                 <View style={{ width: 44 }} /> 
             </View>
 
-            {/* --- SELECTION AREA --- */}
             <ScrollView 
                 contentContainerStyle={{ paddingHorizontal: 16, paddingTop: 10 }}
                 showsVerticalScrollIndicator={false}
             >
                 <View style={styles.insetGroup}>
-                    {parsedOptions.map((opt: any, index: number) => {
+                    {parsedOptions.map((opt: any, idx: number) => {
                         const isSelected = currentValue === opt.value;
-                        const isLast = index === parsedOptions.length - 1;
+                        const isLast = idx === parsedOptions.length - 1;
 
                         return (
                             <View key={opt.value}>
@@ -64,7 +68,7 @@ export default function SelectionView() {
                                         {opt.label}
                                     </Text>
                                     {isSelected && (
-                                        <Ionicons name="checkmark" size={20} color={colors.error} />
+                                        <Ionicons name="checkmark" size={20} color={colors.text} />
                                     )}
                                 </Pressable>
                                 {!isLast && <View style={styles.divider} />}

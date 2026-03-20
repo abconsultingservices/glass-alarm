@@ -27,6 +27,8 @@ interface Section {
     footer?: string;
     fields: Field[];
     readOnly?: boolean; 
+    isRepeater?: boolean;
+    repeaterKey?: string;
 }
 
 interface Props {
@@ -54,7 +56,7 @@ const GlassTaskList = ({ tasks, onUpdate, styles, colors, getPressedStyle, setSc
         <View style={{ marginBottom: 20 }}>
             <View style={styles.insetGroup}>
                 <DraggableFlatList
-                    data={tasks}
+                    data={tasks || []}
                     onDragBegin={() => setScrollEnabled(false)}
                     onDragEnd={({ data }) => {
                         onUpdate(data);
@@ -73,9 +75,7 @@ const GlassTaskList = ({ tasks, onUpdate, styles, colors, getPressedStyle, setSc
                                     value={item.text}
                                     placeholder="Task description..."
                                     placeholderTextColor={colors.placeholderText}
-                                    dataSet={{ 
-                                            'glass-input': 'true'
-                                        }}
+                                    dataSet={{ 'glass-input': 'true' }}
                                     onChangeText={(text) => {
                                         const updated = tasks.map((t: any) => t.id === item.id ? { ...t, text } : t);
                                         onUpdate(updated);
@@ -90,7 +90,7 @@ const GlassTaskList = ({ tasks, onUpdate, styles, colors, getPressedStyle, setSc
                     )}
                 />
                 <Pressable
-                    onPress={() => onUpdate([...tasks, { id: Date.now().toString(), text: '', completed: false }])}
+                    onPress={() => onUpdate([...(tasks || []), { id: Date.now().toString(), text: '', completed: false }])}
                     style={({ pressed }) => [getPressedStyle(pressed), { flexDirection: 'row', alignItems: 'center', justifyContent: 'left', padding: 16 }]}
                 >
                     <Ionicons name="add-circle" size={20} color={colors.text} style={{ opacity: 0.7 }} />
@@ -107,10 +107,12 @@ export const GlassFormRenderer = ({ schema, form, setForm, errors, setErrors }: 
     const [scrollEnabled, setScrollEnabled] = useState(true);
     const [menuVisible, setMenuVisible] = useState(false);
     const [activeMenuField, setActiveMenuField] = useState<Field | null>(null);
+    const [activeMenuIndex, setActiveMenuIndex] = useState<number | null>(null);
 
-    const handleUpdate = (key: string, val: any, rules: ValidationRule[] = [], overrideFilter?: RegExp, type?: string) => {
+    const handleUpdate = (key: string, val: any, rules: ValidationRule[] = [], overrideFilter?: RegExp, type?: string, index?: number, repeaterKey?: string) => {
         let filteredVal = val;
         const nonTextTypes = ['date', 'time', 'switch', 'customDays', 'select-nav', 'select'];
+        
         if (typeof val === 'string' && !nonTextTypes.includes(type || '')) {
             if (overrideFilter) filteredVal = val.replace(overrideFilter, '');
             else {
@@ -120,30 +122,72 @@ export const GlassFormRenderer = ({ schema, form, setForm, errors, setErrors }: 
                 else if (key === 'name') filteredVal = val.replace(/[^a-zA-Z\s\-']/g, '');
             }
         }
-        setForm((prev: any) => ({ ...prev, [key]: filteredVal }));
-        const errorMsg = validateValue(filteredVal, rules);
-        setErrors((prev: any) => ({ ...prev, [key]: errorMsg }));
+
+        if (repeaterKey && typeof index === 'number') {
+            setForm((prev: any) => {
+                // DEEP COPY the array to break all references
+                const updatedArray = JSON.parse(JSON.stringify(prev[repeaterKey] || []));
+                if (updatedArray[index]) {
+                    updatedArray[index][key] = filteredVal;
+                }
+                return { ...prev, [repeaterKey]: updatedArray };
+            });
+            
+            const errorKey = `${repeaterKey}.${index}.${key}`;
+            const errorMsg = validateValue(filteredVal, rules);
+            setErrors((prev: any) => ({ ...prev, [errorKey]: errorMsg }));
+        } else {
+            setForm((prev: any) => ({ ...prev, [key]: filteredVal }));
+            const errorMsg = validateValue(filteredVal, rules);
+            setErrors((prev: any) => ({ ...prev, [key]: errorMsg }));
+        }
     };
 
-    const toggleDay = (key: string, dayIndex: number) => {
+    const toggleDay = (key: string, dayIndex: number, index?: number, repeaterKey?: string) => {
+        const currentVal = (repeaterKey && typeof index === 'number') 
+            ? form[repeaterKey]?.[index]?.[key] 
+            : form[key];
+            
         let currentDays: number[] = [];
-        try { currentDays = typeof form[key] === 'string' ? JSON.parse(form[key]) : (form[key] || []); } catch (e) { currentDays = []; }
-        const nextDays = currentDays.includes(dayIndex) ? currentDays.filter(d => d !== dayIndex) : [...currentDays, dayIndex].sort();
-        handleUpdate(key, JSON.stringify(nextDays));
+        try { 
+            currentDays = typeof currentVal === 'string' ? JSON.parse(currentVal) : (currentVal || []); 
+        } catch (e) { 
+            currentDays = []; 
+        }
+        
+        const nextDays = currentDays.includes(dayIndex) 
+            ? currentDays.filter(d => d !== dayIndex) 
+            : [...currentDays, dayIndex].sort();
+            
+        handleUpdate(key, JSON.stringify(nextDays), [], undefined, 'customDays', index, repeaterKey);
     };
 
-    const renderField = (field: Field, isLast: boolean, section: Section, sIdx: number) => {
-        const hasError = !!errors[field.key];
+    const renderField = (field: Field, isLast: boolean, section: Section, sIdx: number, index?: number, repeaterKey?: string) => {
+        if (field.key === 'customDays') {
+            const currentType = (repeaterKey && typeof index === 'number') 
+                ? form[repeaterKey]?.[index]?.type 
+                : form.type;
+            
+            // If type isn't 'custom', we return null (hide the field)
+            if (currentType !== 'custom') return null;
+        }
+        
+        const errorKey = repeaterKey && typeof index === 'number' ? `${repeaterKey}.${index}.${field.key}` : field.key;
+        const hasError = !!errors[errorKey];
         const isPill = section.sectionType === 'pills';
         const isReadOnly = section.readOnly || field.mode === 'view' || !!field.destination;
-        const valStr = String(form[field.key] ?? '');
+        
+        const currentVal = (repeaterKey && typeof index === 'number') 
+            ? form[repeaterKey]?.[index]?.[field.key] 
+            : form[field.key];
+            
+        const valStr = String(currentVal ?? '');
         const hasValue = valStr.length > 0;
         const { defaultValue, ...cleanConfig } = field.config || {};
 
         return (
-            <View key={`field-row-${section.sectionType}-${sIdx}-${field.key}`}>
+            <View key={`f-row-${sIdx}-${field.key}-${index ?? 'm'}`}>
                 {(() => {
-                    // --- READ ONLY / NAVIGATION LINKS ---
                     if (isReadOnly) {
                         return (
                             <Pressable
@@ -154,7 +198,7 @@ export const GlassFormRenderer = ({ schema, form, setForm, errors, setErrors }: 
                                 <Text style={{ fontSize: 17, color: colors.text }}>{field.label}</Text>
                                 <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'flex-end', flex: 1, marginLeft: 20 }}>
                                     <Text numberOfLines={1} style={{ fontSize: 17, color: colors.mutedText, textAlign: 'right', marginRight: field.destination ? 8 : 0 }}>
-                                        {form[field.key] || 'Not set'}
+                                        {currentVal || 'Not set'}
                                     </Text>
                                     {field.destination && <Ionicons name="chevron-forward" size={16} color={colors.mutedText} style={{ opacity: 0.5 }} />}
                                 </View>
@@ -162,12 +206,15 @@ export const GlassFormRenderer = ({ schema, form, setForm, errors, setErrors }: 
                         );
                     }
 
-                    // --- SELECT (MODAL MENU) ---
                     if (field.type === 'select') {
-                        const activeOption = field.options?.find(o => o.value === form[field.key]);
+                        const activeOption = field.options?.find(o => o.value === currentVal);
                         return (
                             <Pressable 
-                                onPress={() => { setActiveMenuField(field); setMenuVisible(true); }}
+                                onPress={() => { 
+                                    setActiveMenuField({ ...field }); 
+                                    setActiveMenuIndex(index ?? null);
+                                    setMenuVisible(true); 
+                                }}
                                 style={({ pressed }) => [{ flexDirection: 'row', alignItems: 'center', paddingHorizontal: 16, minHeight: 54, justifyContent: 'space-between' }, getPressedStyle(pressed)]}
                             >
                                 <Text style={{ fontSize: 17, color: colors.text }}>{field.label}</Text>
@@ -181,46 +228,50 @@ export const GlassFormRenderer = ({ schema, form, setForm, errors, setErrors }: 
                         );
                     }
 
-                    // --- SELECT-NAV (NESTED ROUTE) ---
                     if (field.type === 'select-nav') {
-                        const activeOption = field.options?.find(o => o.value === form[field.key]);
+                        const activeOption = field.options?.find(o => o.value === currentVal);
                         return (
                             <Pressable
                                 onPress={() => router.push({
                                     pathname: '/calendar/selection-view',
-                                    params: { key: field.key, title: field.label, currentValue: form[field.key], options: JSON.stringify(field.options) }
+                                    params: { 
+                                        key: field.key, 
+                                        title: field.label, 
+                                        currentValue: currentVal, 
+                                        options: JSON.stringify(field.options),
+                                        index: index !== undefined ? index.toString() : undefined,
+                                        repeaterKey: repeaterKey ?? undefined
+                                    }
                                 })}
                                 style={({ pressed }) => [getPressedStyle(pressed), { flexDirection: 'row', alignItems: 'center', paddingHorizontal: 16, minHeight: 54, justifyContent: 'space-between' }]}
                             >
                                 <Text style={{ fontSize: 17, color: colors.text }}>{field.label}</Text>
                                 <View style={{ flexDirection: 'row', alignItems: 'center' }}>
-                                    <Text style={{ fontSize: 17, color: colors.mutedText, marginRight: 8 }}>{activeOption?.label || form[field.key] || 'Daily'}</Text>
+                                    <Text style={{ fontSize: 17, color: colors.mutedText, marginRight: 8 }}>{activeOption?.label || currentVal || 'Daily'}</Text>
                                     <Ionicons name="chevron-forward" size={16} color={colors.mutedText} style={{ opacity: 0.5 }} />
                                 </View>
                             </Pressable>
                         );
                     }
 
-                    // --- SWITCH ---
                     if (field.type === 'switch') {
                         return (
                             <View style={{ flexDirection: 'row', alignItems: 'center', paddingHorizontal: 16, minHeight: 54, justifyContent: 'space-between' }}>
                                 <Text style={{ fontSize: 17, color: colors.text }}>{field.label}</Text>
-                                <Switch value={!!form[field.key]} onValueChange={(val) => handleUpdate(field.key, val)} trackColor={{ false: colors.glassBorder, true: colors.success }} thumbColor={Platform.OS === 'ios' ? undefined : '#FFFFFF'} />
+                                <Switch value={!!currentVal} onValueChange={(val) => handleUpdate(field.key, val, [], undefined, 'switch', index, repeaterKey)} trackColor={{ false: colors.glassBorder, true: colors.success }} thumbColor={Platform.OS === 'ios' ? undefined : '#FFFFFF'} />
                             </View>
                         );
                     }
 
-                    // --- CUSTOM DAYS ---
                     if (field.type === 'customDays') {
                         const days = ['S', 'M', 'T', 'W', 'T', 'F', 'S'];
-                        const selected = typeof form[field.key] === 'string' ? JSON.parse(form[field.key] || '[]') : [];
+                        const selected = typeof currentVal === 'string' ? JSON.parse(currentVal || '[]') : [];
                         return (
                             <View style={{ padding: 16 }}>
                                 <Text style={localStyles.subLabel}>{field.label}</Text>
                                 <View style={{ flexDirection: 'row', justifyContent: 'space-between' }}>
                                     {days.map((day, dIdx) => (
-                                        <Pressable key={dIdx} onPress={() => toggleDay(field.key, dIdx)} style={({ pressed }) => [getPressedStyle(pressed), { width: 40, height: 40, borderRadius: 20, alignItems: 'center', justifyContent: 'center', backgroundColor: selected.includes(dIdx) ? colors.text : colors.glassBackground }]}>
+                                        <Pressable key={dIdx} onPress={() => toggleDay(field.key, dIdx, index, repeaterKey)} style={({ pressed }) => [getPressedStyle(pressed), { width: 40, height: 40, borderRadius: 20, alignItems: 'center', justifyContent: 'center', backgroundColor: selected.includes(dIdx) ? colors.text : colors.glassBackground }]}>
                                             <Text style={{ color: selected.includes(dIdx) ? colors.background : colors.text, fontWeight: '700' }}>{day}</Text>
                                         </Pressable>
                                     ))}
@@ -229,17 +280,23 @@ export const GlassFormRenderer = ({ schema, form, setForm, errors, setErrors }: 
                         );
                     }
 
-                    // --- DATE / TIME ---
                     if (field.type === 'date' || field.type === 'time') {
+                        const dateObj = new Date(currentVal ? (field.type === 'date' ? `${currentVal}T00:00:00` : `2000-01-01T${currentVal}`) : Date.now());
                         return (
                             <View style={{ flexDirection: 'row', alignItems: 'center', paddingHorizontal: 16, minHeight: 54, justifyContent: 'space-between' }}>
                                 <Text style={{ fontSize: 17, color: colors.text }}>{field.label}</Text>
-                                <DateTimePicker value={new Date(form[field.key] ? (field.type === 'date' ? `${form[field.key]}T00:00:00` : `2000-01-01T${form[field.key]}`) : Date.now())} mode={field.type} display="compact" onChange={(e, d) => d && handleUpdate(field.key, field.type === 'date' ? d.toISOString().split('T')[0] : d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', hour12: false }))} textColor={colors.text} themeVariant={colors.isDark ? 'dark' : 'light'} />
+                                <DateTimePicker 
+                                    value={isNaN(dateObj.getTime()) ? new Date() : dateObj} 
+                                    mode={field.type} 
+                                    display="compact" 
+                                    onChange={(e, d) => d && handleUpdate(field.key, field.type === 'date' ? d.toISOString().split('T')[0] : d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', hour12: false }), [], undefined, field.type, index, repeaterKey)} 
+                                    textColor={colors.text} 
+                                    themeVariant={colors.isDark ? 'dark' : 'light'} 
+                                />
                             </View>
                         );
                     }
 
-                    // --- TEXT INPUT (Restored Clear Button & DataSet) ---
                     return (
                         <View style={isPill ? [styles.inputContainer, hasError && { borderColor: colors.error, borderWidth: 1.5 }] : [styles.inputRow]}>
                             <View style={{ flexDirection: 'row', alignItems: 'center', width: '100%', paddingHorizontal: isPill ? 0 : 16, minHeight: 54 }}>
@@ -247,20 +304,17 @@ export const GlassFormRenderer = ({ schema, form, setForm, errors, setErrors }: 
                                 <View style={{ flex: 1, justifyContent: 'center' }}>
                                     <TextInput 
                                         style={[styles.inputField, !isPill && { textAlign: 'right', paddingRight: hasValue ? 30 : 0, color: colors.mutedText }]} 
-                                        value={form[field.key] ?? ''} 
+                                        value={valStr} 
                                         placeholder={isPill ? field.label : ''}
                                         placeholderTextColor={colors.placeholderText} 
-                                        onChangeText={(t) => handleUpdate(field.key, t, field.validation)} 
-                                        dataSet={{ 
-                                            'glass-input': 'true', 
-                                            'inset-input': !isPill ? 'true' : 'false' 
-                                        }}
+                                        onChangeText={(t) => handleUpdate(field.key, t, field.validation, undefined, undefined, index, repeaterKey)} 
+                                        dataSet={{ 'glass-input': 'true', 'inset-input': !isPill ? 'true' : 'false' }}
                                         {...cleanConfig} 
                                     />
                                 </View>
                                 {hasValue && (
                                     <View style={{ position: 'absolute', right: isPill ? 12 : 16 }}>
-                                        <Pressable onPress={() => handleUpdate(field.key, '', field.validation)} style={({ pressed }) => [getPressedStyle(pressed), { padding: 4 }]}>
+                                        <Pressable onPress={() => handleUpdate(field.key, '', field.validation, undefined, undefined, index, repeaterKey)} style={({ pressed }) => [getPressedStyle(pressed), { padding: 4 }]}>
                                             <Ionicons name="close-circle" size={18} color={hasError ? colors.error : colors.placeholderText} />
                                         </Pressable>
                                     </View>
@@ -269,6 +323,7 @@ export const GlassFormRenderer = ({ schema, form, setForm, errors, setErrors }: 
                         </View>
                     );
                 })()}
+                {hasError && <Text style={{ color: colors.error, fontSize: 12, paddingHorizontal: 16, paddingBottom: 4 }}>{errors[errorKey]}</Text>}
                 {!isLast && section.sectionType === 'insetGroup' && <View style={styles.divider} />}
             </View>
         );
@@ -278,10 +333,47 @@ export const GlassFormRenderer = ({ schema, form, setForm, errors, setErrors }: 
         <View style={{ flex: 1 }}>
             <ScrollView scrollEnabled={scrollEnabled} showsVerticalScrollIndicator={false} contentContainerStyle={{ paddingBottom: 120 }}>
                 {schema.map((section, sIdx) => (
-                    <View key={`section-${section.sectionType}-${sIdx}`} style={{ marginBottom: 32 }}>
+                    <View key={`s-${sIdx}`} style={{ marginBottom: 32 }}>
                         {!!section.label && <Text style={styles.fieldGroupTitle}>{section.label}</Text>}
                         {section.sectionType === 'tasks' ? (
                             <GlassTaskList tasks={form.tasks || []} onUpdate={(newTasks: any) => setForm((prev: any) => ({ ...prev, tasks: newTasks }))} styles={styles} colors={colors} getPressedStyle={getPressedStyle} setScrollEnabled={setScrollEnabled} />
+                        ) : section.isRepeater && section.repeaterKey ? (
+                            <View>
+                                {(form[section.repeaterKey] || []).map((item: any, rIdx: number) => (
+                                    <View key={`rep-${sIdx}-${rIdx}`} style={[styles.insetGroup, { marginBottom: 12 }]}>
+                                        {section.fields.map((field, fIdx) => renderField(field, fIdx === section.fields.length - 1, section, sIdx, rIdx, section.repeaterKey))}
+                                        <Pressable 
+                                            onPress={() => {
+                                                setForm((prev: any) => {
+                                                    const updated = JSON.parse(JSON.stringify(prev[section.repeaterKey!] || []));
+                                                    updated.splice(rIdx, 1);
+                                                    return { ...prev, [section.repeaterKey!]: updated };
+                                                });
+                                            }}
+                                            style={({ pressed }) => [getPressedStyle(pressed), { padding: 12, alignItems: 'center', borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: colors.glassBorder }]}
+                                        >
+                                            <Text style={{ color: colors.error, fontSize: 15, fontWeight: '500' }}>Remove {section.label?.replace(/s$/i, '') || 'Block'}</Text>
+                                        </Pressable>
+                                    </View>
+                                ))}
+                                <Pressable 
+                                    onPress={() => {
+                                        setForm((prev: any) => {
+                                            const newItem = section.fields.reduce((acc, curr) => ({ ...acc, [curr.key]: '' }), {
+                                                type: 'daily',
+                                                startTime: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', hour12: false }),
+                                                startDate: new Date().toISOString().split('T')[0]
+                                            });
+                                            // Ensure deep clone to separate from any previous block state
+                                            return { ...prev, [section.repeaterKey!]: [...(prev[section.repeaterKey!] || []), JSON.parse(JSON.stringify(newItem))] };
+                                        });
+                                    }}
+                                    style={({ pressed }) => [getPressedStyle(pressed), { flexDirection: 'row', alignItems: 'center', padding: 16 }]}
+                                >
+                                    <Ionicons name="add-circle" size={20} color={colors.text} style={{ opacity: 0.7 }} />
+                                    <Text style={{ color: colors.text, fontSize: 15, marginLeft: 8, fontWeight: '500' }}>Add {section.label?.replace(/s$/i, '') || 'Block'}</Text>
+                                </Pressable>
+                            </View>
                         ) : (
                             <View style={section.sectionType === 'insetGroup' ? styles.insetGroup : null}>
                                 {section.fields.map((field, fIdx) => renderField(field, fIdx === section.fields.length - 1, section, sIdx))}
@@ -296,20 +388,32 @@ export const GlassFormRenderer = ({ schema, form, setForm, errors, setErrors }: 
                 <Pressable style={localStyles.modalOverlay} onPress={() => setMenuVisible(false)}>
                     <View style={localStyles.menuWrapper}>
                         <BlurView intensity={95} tint={colors.isDark ? 'dark' : 'light'} style={localStyles.menuContainer}>
-                            {activeMenuField?.options?.map((opt, i) => (
-                                <Pressable 
-                                    key={`menu-item-${activeMenuField.key}-${opt.value}`} 
-                                    onPress={() => { handleUpdate(activeMenuField.key, opt.value); setMenuVisible(false); }}
-                                    style={({ pressed }) => [
-                                        localStyles.menuItem, 
-                                        pressed && { backgroundColor: 'rgba(255,255,255,0.1)' }, 
-                                        i !== activeMenuField!.options!.length - 1 && { borderBottomWidth: 0.5, borderBottomColor: colors.isDark ? 'rgba(255,255,255,0.1)' : 'rgba(0,0,0,0.05)' }
-                                    ]}
-                                >
-                                    <Text style={{ color: colors.text, fontSize: 17, flex: 1 }}>{opt.label}</Text>
-                                    {form[activeMenuField!.key] === opt.value && <Ionicons name="checkmark" size={20} color={colors.text} />}
-                                </Pressable>
-                            ))}
+                            {activeMenuField?.options?.map((opt, i) => {
+                                const repeaterSection = schema.find(s => s.isRepeater && s.fields.some(f => f.key === activeMenuField.key));
+                                const repeaterKey = repeaterSection?.repeaterKey;
+                                
+                                const currentVal = (repeaterKey && typeof activeMenuIndex === 'number') 
+                                    ? form[repeaterKey]?.[activeMenuIndex]?.[activeMenuField.key] 
+                                    : form[activeMenuField.key];
+
+                                return (
+                                    <Pressable 
+                                        key={`m-${activeMenuField.key}-${opt.value}`} 
+                                        onPress={() => { 
+                                            handleUpdate(activeMenuField.key, opt.value, [], undefined, 'select', activeMenuIndex ?? undefined, repeaterKey); 
+                                            setMenuVisible(false); 
+                                        }}
+                                        style={({ pressed }) => [
+                                            localStyles.menuItem, 
+                                            pressed && { backgroundColor: 'rgba(255,255,255,0.1)' }, 
+                                            i !== 0 && { borderTopWidth: 0.5, borderTopColor: colors.isDark ? 'rgba(255,255,255,0.1)' : 'rgba(0,0,0,0.05)' }
+                                        ]}
+                                    >
+                                        <Text style={{ color: colors.text, fontSize: 17, flex: 1 }}>{opt.label}</Text>
+                                        {currentVal === opt.value && <Ionicons name="checkmark" size={20} color={colors.text} />}
+                                    </Pressable>
+                                );
+                            })}
                         </BlurView>
                     </View>
                 </Pressable>

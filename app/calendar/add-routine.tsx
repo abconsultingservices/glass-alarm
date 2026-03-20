@@ -1,6 +1,6 @@
-import React, { useState, useRef, useMemo, useCallback } from 'react';
-import { View, Text, Pressable, Animated, ScrollView, Platform } from 'react-native';
-import { useRouter, useFocusEffect } from 'expo-router'; 
+import React, { useState, useRef, useMemo, useEffect } from 'react';
+import { View, Text, Pressable, Animated, ScrollView, Platform, DeviceEventEmitter } from 'react-native';
+import { useRouter } from 'expo-router'; 
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { dbService } from '../../services/DatabaseService';
 import { useThemedStyles } from '../../hooks/useThemedStyles';
@@ -8,7 +8,6 @@ import { GlassFormRenderer } from '../../components/GlassFormRenderer';
 import { getInitialFormState, getInitialErrorState, validateValue } from '../../utils/ValidationEngine';
 import { fieldRegistry } from '../../services/FieldRegistry';
 import { Ionicons } from '@expo/vector-icons';
-import AsyncStorage from '@react-native-async-storage/async-storage'; 
 
 export default function AddRoutine() {
     const router = useRouter();
@@ -24,13 +23,13 @@ export default function AddRoutine() {
                 { key: 'name', ...fieldRegistry.routines.name },
                 { key: 'duration', ...fieldRegistry.routines.duration },
                 { key: 'isEnabled', ...fieldRegistry.routines.isEnabled },
-                { key: 'repeatType', ...fieldRegistry.routine_schedules.repeatType },
             ]
         },
         {
             sectionType: 'insetGroup' as const,
-            label: 'SCHEDULE',
-            footer: 'Multi-hit routines automatically expand on your calendar.',
+            label: 'SCHEDULES',
+            isRepeater: true,
+            repeaterKey: 'schedules',
             fields: [
                 { key: 'startDate', ...fieldRegistry.routine_schedules.startDate },
                 { key: 'startTime', ...fieldRegistry.routine_schedules.startTime },
@@ -42,21 +41,21 @@ export default function AddRoutine() {
 
     const [form, setForm] = useState(() => {
         const initial = getInitialFormState(schema);
-        schema.forEach(section => {
-            section.fields.forEach(field => {
-                if (field.config?.defaultValue !== undefined) {
-                    initial[field.key] = field.config.defaultValue;
-                }
-            });
-        });
-
+        
+        // Ensure schedules is initialized as an array with one default entry
         return { 
             ...initial,
-            type: initial.type || 'daily', 
-            startDate: initial.startDate || new Date().toISOString().split('T')[0],
-            startTime: initial.startTime || '08:00',
+            name: '',
             duration: '30',
-            tasks: [] // Initialize task list for the Tasks tab
+            schedules: [{
+                type: 'daily',
+                startDate: new Date().toISOString().split('T')[0],
+                startTime: '08:00',
+                customDays: '[]',
+                frequencyHours: '',
+                maxOccurrences: '1'
+            }],
+            tasks: [] 
         };
     });
 
@@ -64,23 +63,31 @@ export default function AddRoutine() {
     const [activeTab, setActiveTab] = useState('Routine'); 
     const shakeAnim = useRef(new Animated.Value(0)).current;
 
-    // --- SELECTION ROUND-TRIP HANDLER ---
-    useFocusEffect(
-        useCallback(() => {
-            const checkSelections = async () => {
-                const selectedType = await AsyncStorage.getItem('selection_temp_type');
-                if (selectedType) {
-                    setForm((prev: any) => ({ ...prev, type: selectedType }));
-                    await AsyncStorage.removeItem('selection_temp_type');
-                }
-            };
-            checkSelections();
-        }, [])
-    );
+    // --- SELECTION EVENT LISTENER (Prevents State Reset) ---
+    useEffect(() => {
+        const subscription = DeviceEventEmitter.addListener('FORM_FIELD_UPDATE', (data) => {
+            const { key, value, index, repeaterKey } = data;
 
-    // --- RE-CALCULATE SCHEMA BASED ON TAB & SELECTION ---
+            setForm((prev: any) => {
+                // Deep clone to ensure no shared references
+                const newForm = JSON.parse(JSON.stringify(prev));
+
+                if (repeaterKey && typeof index === 'number') {
+                    if (newForm[repeaterKey] && newForm[repeaterKey][index]) {
+                        newForm[repeaterKey][index][key] = value;
+                    }
+                } else {
+                    newForm[key] = value;
+                }
+                return newForm;
+            });
+        });
+
+        return () => subscription.remove();
+    }, []);
+
+    // --- RE-CALCULATE SCHEMA BASED ON TAB ---
     const activeSchema = useMemo(() => {
-        // If we are on the Tasks tab, return the task list schema
         if (activeTab === 'Tasks') {
             return [{
                 sectionType: 'tasks' as const,
@@ -90,21 +97,25 @@ export default function AddRoutine() {
             }];
         }
 
-        // Otherwise, return the standard Routine settings
         const base = JSON.parse(JSON.stringify(schema));
-        if (form.type === 'custom') {
-            base[1].fields.push({ key: 'customDays', ...fieldRegistry.routine_schedules.customDays });
+        
+        // Note: GlassFormRenderer handles the individual field visibility 
+        // within repeater blocks, but we can augment the base definition here 
+        // if we want specific fields available for all schedules
+        const scheduleSection = base.find((s: any) => s.repeaterKey === 'schedules');
+        if (scheduleSection) {
+            scheduleSection.fields.push({ key: 'customDays', ...fieldRegistry.routine_schedules.customDays });
+            scheduleSection.fields.push({ key: 'frequencyHours', ...fieldRegistry.routine_schedules.frequencyHours });
+            scheduleSection.fields.push({ key: 'maxOccurrences', ...fieldRegistry.routine_schedules.maxOccurrences });
         }
-        base[1].fields.push({ key: 'frequencyHours', ...fieldRegistry.routine_schedules.frequencyHours });
-        base[1].fields.push({ key: 'maxOccurrences', ...fieldRegistry.routine_schedules.maxOccurrences });
+
         return base;
-    }, [form.type, schema, activeTab]);
+    }, [activeTab, schema]);
 
     const hasErrors = useMemo(() => {
         const hasActiveErrors = Object.values(errors).some(e => !!e);
         const isNameMissing = !form?.name?.trim();
-        const isTimeMissing = !form?.startTime;
-        return hasActiveErrors || isNameMissing || isTimeMissing;
+        return hasActiveErrors || isNameMissing;
     }, [errors, form]);
 
     const triggerShake = () => {
@@ -116,40 +127,19 @@ export default function AddRoutine() {
     };
 
     const handleSave = async () => {
-        const newErrors: any = {};
-        let hasValidationError = false;
-
-        // Final validation sweep (Routine settings are mandatory)
-        schema.forEach((section: any) => {
-            section.fields.forEach((field: any) => {
-                if (field.validation) {
-                    const errorMsg = validateValue(form[field.key], field.validation);
-                    if (errorMsg) {
-                        newErrors[field.key] = errorMsg;
-                        hasValidationError = true;
-                    }
-                }
-            });
-        });
-
-        if (hasValidationError) {
-            setActiveTab('Routine'); // Snap back to settings tab so they see what's wrong
-            setErrors(newErrors);
+        if (hasErrors) {
+            setActiveTab('Routine');
             triggerShake();
             return;
         }
 
-        const success = await dbService.createRoutine(form.name, parseInt(form.duration), {
-            type: form.type,
-            startDate: form.startDate,
-            startTime: form.startTime,
-            endDate: form.endDate || null,
-            endTime: null,
-            customDays: form.type === 'custom' ? form.customDays : null,
-            frequencyHours: form.frequencyHours ? parseInt(form.frequencyHours) : null,
-            maxOccurrences: form.maxOccurrences ? parseInt(form.maxOccurrences) : 1,
-            tasks: form.tasks // Pass the task array to the DB service
-        });
+        // Pass the entire schedules array to the database service
+        const success = await dbService.createRoutine(
+            form.name, 
+            parseInt(form.duration), 
+            form.schedules, // Updated to pass Array
+            form.tasks
+        );
 
         if (success) router.back();
     };
