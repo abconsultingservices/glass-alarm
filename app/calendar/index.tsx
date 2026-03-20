@@ -58,7 +58,7 @@ export default function CalendarMonthView() {
 
         const [fetchedRoutines, fetchedExceptions] = await Promise.all([
           RoutineService.getRoutines(activeDate),
-          RoutineService.getExceptions()
+          RoutineService.getExceptions(activeDate)
         ]);
 
         setRoutines(fetchedRoutines);

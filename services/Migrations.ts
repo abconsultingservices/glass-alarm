@@ -69,25 +69,29 @@ CREATE TABLE IF NOT EXISTS routines (
     FOREIGN KEY(gguid) REFERENCES groups(gguid) ON DELETE CASCADE
 );
 
--- 4. Routine Schedules (Updated with End Boundaries)
+-- 4. Routine Schedules
 CREATE TABLE IF NOT EXISTS routine_schedules (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     sguid TEXT NOT NULL UNIQUE,
     rguid TEXT NOT NULL,
+    uguid TEXT NOT NULL,             -- Added
+    gguid TEXT NOT NULL,             -- Added
     type TEXT CHECK(type IN ('daily', 'weekdays', 'weekends', 'custom')) NOT NULL,
     customDays TEXT,
     isActive INTEGER DEFAULT 1,
-    startDate TEXT NOT NULL,      -- YYYY-MM-DD
-    startTime TEXT NOT NULL,      -- HH:mm
-    endDate TEXT,                 -- YYYY-MM-DD (New Column)
-    endTime TEXT,                 -- HH:mm (New Column)
+    startDate TEXT NOT NULL,
+    startTime TEXT NOT NULL,
+    endDate TEXT,
+    endTime TEXT,
     frequencyHours INTEGER,       
     maxOccurrences INTEGER,       
     createDate TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     createdBy TEXT NOT NULL,
     lastModifiedDate TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     lastModifiedBy TEXT NOT NULL,
-    FOREIGN KEY(rguid) REFERENCES routines(rguid) ON DELETE CASCADE
+    FOREIGN KEY(rguid) REFERENCES routines(rguid) ON DELETE CASCADE,
+    FOREIGN KEY(uguid) REFERENCES users(uguid),
+    FOREIGN KEY(gguid) REFERENCES groups(gguid) ON DELETE CASCADE
 );
 
 -- 5. Routine Exceptions
@@ -95,11 +99,15 @@ CREATE TABLE IF NOT EXISTS routine_exceptions (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     reguid TEXT NOT NULL UNIQUE,
     rguid TEXT NOT NULL,
-    instanceDate TEXT NOT NULL,      -- YYYY-MM-DD
+    uguid TEXT NOT NULL,             -- Added
+    gguid TEXT NOT NULL,             -- Added
+    instanceDate TEXT NOT NULL,
     instanceIndex INTEGER NOT NULL DEFAULT 0, 
     createDate TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     createdBy TEXT NOT NULL,
-    FOREIGN KEY(rguid) REFERENCES routines(rguid) ON DELETE CASCADE
+    FOREIGN KEY(rguid) REFERENCES routines(rguid) ON DELETE CASCADE,
+    FOREIGN KEY(uguid) REFERENCES users(uguid),
+    FOREIGN KEY(gguid) REFERENCES groups(gguid) ON DELETE CASCADE
 );
 
 -- 6. Routine Instances
@@ -107,25 +115,52 @@ CREATE TABLE IF NOT EXISTS routine_instances (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     riguid TEXT NOT NULL UNIQUE,
     sguid TEXT NOT NULL,
+    uguid TEXT NOT NULL,             -- Added
+    gguid TEXT NOT NULL,             -- Added
     isComplete INTEGER DEFAULT 0,
     instanceDate TEXT NOT NULL,
     startTime TEXT NOT NULL,
     duration INTEGER NOT NULL,
     createDate TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     createdBy TEXT NOT NULL,
-    FOREIGN KEY(sguid) REFERENCES routine_schedules(sguid) ON DELETE CASCADE
+    FOREIGN KEY(sguid) REFERENCES routine_schedules(sguid) ON DELETE CASCADE,
+    FOREIGN KEY(uguid) REFERENCES users(uguid),
+    FOREIGN KEY(gguid) REFERENCES groups(gguid) ON DELETE CASCADE
 );
 
 -- 7. Ringtones Table
 CREATE TABLE IF NOT EXISTS ringtones (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     rtguid TEXT NOT NULL UNIQUE,
+    uguid TEXT NOT NULL,             -- Added
+    gguid TEXT NOT NULL,             -- Added
     name TEXT NOT NULL,
     fileName TEXT NOT NULL,
     isActive INTEGER DEFAULT 1,
     createDate TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     createdBy TEXT NOT NULL,
     lastModifiedDate TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-    lastModifiedBy TEXT NOT NULL
+    lastModifiedBy TEXT NOT NULL,
+    FOREIGN KEY(uguid) REFERENCES users(uguid),
+    FOREIGN KEY(gguid) REFERENCES groups(gguid) ON DELETE CASCADE
+);
+
+-- 8. Routine Tasks
+CREATE TABLE IF NOT EXISTS routine_tasks (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    rtguid TEXT NOT NULL UNIQUE,
+    rguid TEXT NOT NULL,
+    uguid TEXT NOT NULL,             -- Added
+    gguid TEXT NOT NULL,             -- Added
+    text TEXT NOT NULL,
+    displayOrder INTEGER NOT NULL,
+    isComplete INTEGER DEFAULT 0,
+    createDate TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    createdBy TEXT NOT NULL,
+    lastModifiedDate TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    lastModifiedBy TEXT NOT NULL,
+    FOREIGN KEY(rguid) REFERENCES routines(rguid) ON DELETE CASCADE,
+    FOREIGN KEY(uguid) REFERENCES users(uguid),
+    FOREIGN KEY(gguid) REFERENCES groups(gguid) ON DELETE CASCADE
 );
 `;

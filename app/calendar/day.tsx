@@ -53,7 +53,7 @@ export default function DayView() {
 
           const [fetchedRoutines, fetchedExceptions] = await Promise.all([
             RoutineService.getRoutines(activeDate),
-            RoutineService.getExceptions()
+            RoutineService.getExceptions(activeDate)
           ]);
           
           setRoutines(fetchedRoutines);
