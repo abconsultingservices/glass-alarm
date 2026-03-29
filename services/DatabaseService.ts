@@ -31,6 +31,9 @@ class DatabaseService {
             } else {
                 await AsyncStorage.setItem('temp_setup_uguid', userCheck.uguid);
                 await AsyncStorage.setItem('temp_setup_gguid', userCheck.gguid);
+                
+                await AsyncStorage.setItem('session_uguid', userCheck.uguid);
+                await AsyncStorage.setItem('session_gguid', userCheck.gguid);
             }
             
             console.log("DB Service: Initialization successful.");
@@ -161,36 +164,66 @@ class DatabaseService {
         }
     }
 
-    async createRoutine(name: string, duration: number, schedule: {
-        startTime: string,
-        type: string,
-        customDays?: string,
-        frequencyHours?: number,
-        maxOccurrences?: number
-    }, tasks: { text: string }[] = []) {
+    // UPDATED: Now handles Array of schedules and Array of tasks
+    async createRoutine(
+        name: string, 
+        duration: number, 
+        schedules: {
+            type: string,
+            startDate: string,
+            startTime: string,
+            endDate?: string | null,
+            customDays?: string | null,
+            frequencyHours?: string | number | null,
+            maxOccurrences?: string | number | null
+        }[] = [], 
+        tasks: { text: string }[] = []
+    ) {
         const uguid = await AsyncStorage.getItem('session_uguid');
         const gguid = await AsyncStorage.getItem('session_gguid');
         const rguid = Crypto.randomUUID();
-        const sguid = Crypto.randomUUID();
 
-        if (!uguid || !gguid) return false;
+        if (!uguid || !gguid) {
+            console.error("DB Service: Session GUIDs missing");
+            return false;
+        }
 
         try {
             const sqlite = await this.getDb();
+            
             await sqlite.withTransactionAsync(async () => {
+                // 1. Insert Routine
                 await sqlite.runAsync(
                     `INSERT INTO routines (rguid, uguid, gguid, name, duration, createdBy, lastModifiedBy) 
                     VALUES (?, ?, ?, ?, ?, ?, ?)`,
                     [rguid, uguid, gguid, name, duration, uguid, uguid]
                 );
 
-                await sqlite.runAsync(
-                    `INSERT INTO routine_schedules (sguid, rguid, uguid, gguid, type, customDays, startDate, startTime, frequencyHours, maxOccurrences, createdBy, lastModifiedBy) 
-                    VALUES (?, ?, ?, ?, ?, ?, CURRENT_DATE, ?, ?, ?, ?, ?)`,
-                    [sguid, rguid, uguid, gguid, schedule.type, schedule.customDays || null, schedule.startTime, schedule.frequencyHours || null, schedule.maxOccurrences || 1, uguid, uguid]
-                );
+                // 2. Insert Schedules
+                for (const schedule of schedules) {
+                    const sguid = Crypto.randomUUID();
+                    const freq = schedule.frequencyHours ? parseInt(schedule.frequencyHours.toString()) : null;
+                    const maxOcc = schedule.maxOccurrences ? parseInt(schedule.maxOccurrences.toString()) : 1;
 
+                    await sqlite.runAsync(
+                        `INSERT INTO routine_schedules (
+                            sguid, rguid, uguid, gguid, type, 
+                            customDays, startDate, startTime, endDate,
+                            frequencyHours, maxOccurrences, 
+                            createdBy, lastModifiedBy
+                        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+                        [
+                            sguid, rguid, uguid, gguid, schedule.type, 
+                            schedule.customDays || null, schedule.startDate, schedule.startTime, 
+                            schedule.endDate || null, freq, maxOcc, uguid, uguid
+                        ]
+                    );
+                }
+
+                // 3. Insert Tasks
                 for (let i = 0; i < tasks.length; i++) {
+                    if (!tasks[i].text.trim()) continue;
+                    
                     await sqlite.runAsync(
                         `INSERT INTO routine_tasks (rtguid, rguid, uguid, gguid, text, displayOrder, createdBy, lastModifiedBy) 
                          VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
@@ -198,9 +231,11 @@ class DatabaseService {
                     );
                 }
             });
+
+            console.log(`DB Service: Saved "${name}" successfully.`);
             return true;
         } catch (e) {
-            console.error("Failed to create routine:", e);
+            console.error("DB Service: Create Routine failed:", e);
             return false;
         }
     }

@@ -1,16 +1,17 @@
 import React, { useState, useRef, useMemo, useEffect } from 'react';
 import { View, Text, Pressable, Animated, ScrollView, Platform, DeviceEventEmitter } from 'react-native';
-import { useRouter } from 'expo-router'; 
+import { useRouter, useLocalSearchParams } from 'expo-router'; 
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { dbService } from '../../services/DatabaseService';
 import { useThemedStyles } from '../../hooks/useThemedStyles';
 import { GlassFormRenderer } from '../../components/GlassFormRenderer';
-import { getInitialFormState, getInitialErrorState, validateValue } from '../../utils/ValidationEngine';
+import { getInitialFormState, getInitialErrorState, validateForm } from '../../utils/ValidationEngine';
 import { fieldRegistry } from '../../services/FieldRegistry';
 import { Ionicons } from '@expo/vector-icons';
 
 export default function AddRoutine() {
     const router = useRouter();
+    const params = useLocalSearchParams(); // Catch the incoming context date
     const insets = useSafeAreaInsets();
     const { styles, colors, getPressedStyle } = useThemedStyles(); 
 
@@ -42,14 +43,18 @@ export default function AddRoutine() {
     const [form, setForm] = useState(() => {
         const initial = getInitialFormState(schema);
         
-        // Ensure schedules is initialized as an array with one default entry
+        // Determine context-aware start date from calendar selection
+        const contextDate = (params.selectedDate && typeof params.selectedDate === 'string') 
+            ? params.selectedDate 
+            : new Date().toISOString().split('T')[0];
+
         return { 
             ...initial,
             name: '',
             duration: '30',
             schedules: [{
                 type: 'daily',
-                startDate: new Date().toISOString().split('T')[0],
+                startDate: contextDate,
                 startTime: '08:00',
                 customDays: '[]',
                 frequencyHours: '',
@@ -63,15 +68,11 @@ export default function AddRoutine() {
     const [activeTab, setActiveTab] = useState('Routine'); 
     const shakeAnim = useRef(new Animated.Value(0)).current;
 
-    // --- SELECTION EVENT LISTENER (Prevents State Reset) ---
     useEffect(() => {
         const subscription = DeviceEventEmitter.addListener('FORM_FIELD_UPDATE', (data) => {
             const { key, value, index, repeaterKey } = data;
-
             setForm((prev: any) => {
-                // Deep clone to ensure no shared references
                 const newForm = JSON.parse(JSON.stringify(prev));
-
                 if (repeaterKey && typeof index === 'number') {
                     if (newForm[repeaterKey] && newForm[repeaterKey][index]) {
                         newForm[repeaterKey][index][key] = value;
@@ -82,11 +83,9 @@ export default function AddRoutine() {
                 return newForm;
             });
         });
-
         return () => subscription.remove();
     }, []);
 
-    // --- RE-CALCULATE SCHEMA BASED ON TAB ---
     const activeSchema = useMemo(() => {
         if (activeTab === 'Tasks') {
             return [{
@@ -98,24 +97,18 @@ export default function AddRoutine() {
         }
 
         const base = JSON.parse(JSON.stringify(schema));
-        
-        // Note: GlassFormRenderer handles the individual field visibility 
-        // within repeater blocks, but we can augment the base definition here 
-        // if we want specific fields available for all schedules
         const scheduleSection = base.find((s: any) => s.repeaterKey === 'schedules');
         if (scheduleSection) {
             scheduleSection.fields.push({ key: 'customDays', ...fieldRegistry.routine_schedules.customDays });
             scheduleSection.fields.push({ key: 'frequencyHours', ...fieldRegistry.routine_schedules.frequencyHours });
             scheduleSection.fields.push({ key: 'maxOccurrences', ...fieldRegistry.routine_schedules.maxOccurrences });
         }
-
         return base;
     }, [activeTab, schema]);
 
+    // Simple error check for UI button state
     const hasErrors = useMemo(() => {
-        const hasActiveErrors = Object.values(errors).some(e => !!e);
-        const isNameMissing = !form?.name?.trim();
-        return hasActiveErrors || isNameMissing;
+        return Object.values(errors).some(e => !!e) || !form?.name?.trim();
     }, [errors, form]);
 
     const triggerShake = () => {
@@ -127,21 +120,27 @@ export default function AddRoutine() {
     };
 
     const handleSave = async () => {
-        if (hasErrors) {
+        // 1. Unified deep validation check
+        const newErrors = validateForm(form, activeSchema);
+
+        if (Object.keys(newErrors).length > 0) {
+            setErrors(newErrors);
             setActiveTab('Routine');
             triggerShake();
             return;
         }
 
-        // Pass the entire schedules array to the database service
+        // 2. Execute DB save
         const success = await dbService.createRoutine(
             form.name, 
-            parseInt(form.duration), 
-            form.schedules, // Updated to pass Array
+            parseInt(form.duration) || 0, 
+            form.schedules, 
             form.tasks
         );
 
-        if (success) router.back();
+        if (success) {
+            router.back();
+        }
     };
 
     return (

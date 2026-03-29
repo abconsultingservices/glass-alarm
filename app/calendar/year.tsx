@@ -175,7 +175,27 @@ export default function CalendarYearView() {
               <Ionicons name="search-outline" size={22} color={colors.text} />
               <View style={styles.pillDivider} />
               <Pressable 
-                onPress={() => router.push('/calendar/add-routine')}
+                onPress={async () => {
+                    const freshToday = getLocalTodayString();
+                    const [tYear] = freshToday.split('-').map(Number);
+                    
+                    // Fetch the last date user was interacting with (or fresh today)
+                    const savedDate = await AsyncStorage.getItem('calendar_last_date');
+                    const activeDate = savedDate || freshToday;
+                    const [vYear] = activeDate.split('-').map(Number);
+
+                    let targetDate;
+                    if (vYear === tYear) {
+                        targetDate = freshToday; // Use Today if viewing current year
+                    } else {
+                        targetDate = `${vYear}-01-01`; // Use Jan 1 if viewing another year
+                    }
+
+                    router.push({
+                        pathname: '/calendar/add-routine',
+                        params: { selectedDate: targetDate }
+                    });
+                }} 
                 style={({ pressed }) => getPressedStyle(pressed)}
               >
                   <Ionicons name="add" size={26} color={colors.text} />
