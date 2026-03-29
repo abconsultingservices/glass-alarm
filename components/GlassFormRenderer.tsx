@@ -66,13 +66,24 @@ const GlassTaskList = ({ tasks, onUpdate, styles, colors, getPressedStyle, setSc
                     scrollEnabled={false}
                     renderItem={({ item, drag, isActive }: RenderItemParams<any>) => (
                         <ScaleDecorator>
-                            <View style={[styles.inputRow, { backgroundColor: isActive ? 'rgba(255,255,255,0.15)' : 'transparent', zIndex: isActive ? 999 : 1 }] as any}>
+                            <View style={[
+                                styles.inputRow, 
+                                { 
+                                    backgroundColor: isActive ? 'rgba(255,255,255,0.15)' : 'transparent', 
+                                    zIndex: isActive ? 999 : 1 
+                                }
+                            ] as any}>
                                 <Pressable onLongPress={drag} delayLongPress={150} style={{ paddingLeft: 16 }}>
                                     <Ionicons name="reorder-three" size={24} color={colors.mutedText} style={{ opacity: 0.5 }} />
                                 </Pressable>
+                                
                                 <TextInput
-                                    style={[styles.inputField, { flex: 1, paddingLeft: 12, color: colors.text }]}
-                                    value={item.text}
+                                    style={[
+                                        styles.inputField, 
+                                        { flex: 1, paddingLeft: 12, color: colors.text },
+                                        item.completed && { textDecorationLine: 'line-through', opacity: 0.5 } // Strike-through effect
+                                    ]}
+                                    value={item.text || item.title || ''}
                                     placeholder="Task description..."
                                     placeholderTextColor={colors.placeholderText}
                                     dataSet={{ 'glass-input': 'true' }}
@@ -81,8 +92,22 @@ const GlassTaskList = ({ tasks, onUpdate, styles, colors, getPressedStyle, setSc
                                         onUpdate(updated);
                                     }}
                                 />
-                                <Pressable onPress={() => onUpdate(tasks.filter((t: any) => t.id !== item.id))} style={({ pressed }) => [getPressedStyle(pressed), { paddingHorizontal: 16 }]}>
-                                    <Ionicons name="trash-outline" size={20} color={colors.error} />
+
+                                {/* Completion Toggle (Replaces Trash Icon) */}
+                                <Pressable 
+                                    onPress={() => {
+                                        const updated = tasks.map((t: any) => 
+                                            t.id === item.id ? { ...t, completed: !t.completed } : t
+                                        );
+                                        onUpdate(updated);
+                                    }} 
+                                    style={({ pressed }) => [getPressedStyle(pressed), { paddingHorizontal: 16 }]}
+                                >
+                                    <Ionicons 
+                                        name={item.completed ? "checkmark-circle" : "ellipse-outline"} 
+                                        size={24} 
+                                        color={item.completed ? colors.success : colors.mutedText} 
+                                    />
                                 </Pressable>
                             </View>
                             <View style={styles.divider} />

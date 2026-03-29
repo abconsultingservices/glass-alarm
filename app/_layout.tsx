@@ -21,30 +21,36 @@ export default function RootLayout() {
         // Uncomment the next line, run the app once, then comment it back out.
         // await dbService.resetApp(); 
         
-        // 1. Ensure DB is ready and seeded
         await dbService.initialize();
+        
+        // Update state to allow the Stack to render
         setIsDbReady(true);
 
-        // 2. Only run navigation restoration at the app root entry point
-        if (segments.length === 0 || segments[0] === 'index') {
+        // 2. Only run navigation restoration
+        if (segments.length === 0 || segments[0] === 'index' || segments[0] === '(tabs)') {
           const lastView = await AsyncStorage.getItem('calendar_zoom_level');
           const lastDate = await AsyncStorage.getItem('calendar_last_date');
           const today = new Date().toISOString().split('T')[0];
           const targetDate = lastDate || today;
 
-          if (lastView === 'year') {
-            router.replace('/calendar/year');
-          } else if (lastView === 'day') {
-            router.replace({
-              pathname: '/calendar/day',
-              params: { date: targetDate }
+          setTimeout(() => {
+            requestAnimationFrame(() => {
+              if (lastView === 'year') {
+                router.replace('/calendar/year');
+              } else if (lastView === 'day') {
+                router.replace({
+                  pathname: '/calendar/day',
+                  params: { date: targetDate }
+                });
+              } else if (lastView === 'month') {
+                router.replace('/calendar');
+              }
             });
-          } else if (lastView === 'month') {
-            router.replace('/calendar');
-          }
+        }, 100);
         }
       } catch (e) {
         console.error("Failed to initialize app state", e);
+        setIsDbReady(true); // Don't leave them on a black screen if DB fails
       }
     };
 
@@ -168,6 +174,14 @@ export default function RootLayout() {
           <Stack.Screen name="calendar/year" />
           <Stack.Screen 
             name="calendar/add-routine" 
+            options={{ 
+              presentation: 'modal',
+              headerShown: false,
+              gestureEnabled: true,
+            }} 
+          />
+          <Stack.Screen 
+            name="calendar/view-tasks" 
             options={{ 
               presentation: 'modal',
               headerShown: false,

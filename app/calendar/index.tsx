@@ -41,7 +41,6 @@ export default function CalendarMonthView() {
   let touchY = 0; 
 
   // --- DATA SYNC ---
-  // Re-fetches routines whenever the screen gains focus or the selected date changes
   useFocusEffect(
     useCallback(() => {
       const freshToday = getLocalTodayString();
@@ -65,7 +64,7 @@ export default function CalendarMonthView() {
         setExceptions(fetchedExceptions);
       };
       syncState();
-    }, [selectedDate]) // Dependency ensures history loads when date changes
+    }, [selectedDate])
   );
 
   const handleDatePress = (dateString: string) => {
@@ -140,7 +139,6 @@ export default function CalendarMonthView() {
     const expandedList: any[] = [];
 
     routines.forEach(routine => {
-      // 1. Engine checks the UTC lifespan and repeat pattern
       if (shouldShowRoutineOnDate(routine, selectedDate)) {
         const count = routine.maxOccurrences || 1;
         
@@ -149,11 +147,9 @@ export default function CalendarMonthView() {
             ex.routineId === routine.rguid && ex.date === selectedDate && ex.instanceIndex === i
           );
 
-          // 2. Parse the 24h startTime string (HH:mm) and apply to local calendar day
           const [h, min] = routine.startTime.split(':').map(Number);
           const start = new Date(y, mon - 1, d, h, min, 0, 0);
 
-          // 3. Handle multiple occurrences
           if (i > 0 && routine.frequencyHours) {
             start.setHours(start.getHours() + (i * routine.frequencyHours));
           }
@@ -162,7 +158,7 @@ export default function CalendarMonthView() {
 
           expandedList.push({ 
             ...routine, 
-            id: `${routine.rguid}-idx-${i}`, // UI specific ID
+            id: `${routine.rguid}-idx-${i}`,
             originalId: routine.rguid,
             startTime: start, 
             endTime: end, 
@@ -258,21 +254,36 @@ export default function CalendarMonthView() {
         scrollEventThrottle={16}
         contentContainerStyle={{ paddingHorizontal: 16, paddingBottom: 140, paddingTop: 10 }}
         renderItem={({ item }) => (
-          <View style={[styles.insetGroup, { marginBottom: 12, padding: 16, flexDirection: 'row', alignItems: 'center' }]}>
-            <View style={{ flex: 1, opacity: item.isInstanceEnabled ? 1 : 0.4 }}>
-              <Text style={{ color: colors.text, fontSize: 17, fontWeight: '600' }}>{item.name}</Text>
-              <Text style={{ color: colors.mutedText, fontSize: 13, marginTop: 2 }}>{item.type || 'daily'}</Text>
+          <View style={[styles.insetGroup, { marginBottom: 12, padding: 0, overflow: 'hidden' }]}>
+            <View style={{ flexDirection: 'row', alignItems: 'center', padding: 16 }}>
+              <Pressable 
+                onPress={() => router.push({
+                  pathname: '/calendar/view-tasks',
+                  params: { 
+                    routineId: item.originalId, 
+                    date: selectedDate,
+                    name: item.name 
+                  }
+                })}
+                style={({ pressed }) => [getPressedStyle(pressed), { flex: 1, flexDirection: 'row', alignItems: 'center' }]}
+              >
+                <View style={{ flex: 1, opacity: item.isInstanceEnabled ? 1 : 0.4 }}>
+                  <Text style={{ color: colors.text, fontSize: 17, fontWeight: '600' }}>{item.name}</Text>
+                  <Text style={{ color: colors.mutedText, fontSize: 13, marginTop: 2 }}>{item.type || 'daily'}</Text>
+                </View>
+                <View style={{ alignItems: 'flex-end', marginRight: 12, opacity: item.isInstanceEnabled ? 1 : 0.4 }}>
+                  <Text style={{ color: colors.text, fontSize: 15, fontWeight: '500' }}>{formatTime(item.startTime)}</Text>
+                  <Text style={{ color: colors.mutedText, fontSize: 12 }}>to {formatTime(item.endTime)}</Text>
+                </View>
+              </Pressable>
+              
+              <Switch
+                value={item.isInstanceEnabled} 
+                trackColor={{ false: colors.glassBorder, true: colors.success }}
+                thumbColor={'#FFF'}
+                onValueChange={() => handleToggleInstance(item)}
+              />
             </View>
-            <View style={{ alignItems: 'flex-end', marginRight: 12, opacity: item.isInstanceEnabled ? 1 : 0.4 }}>
-              <Text style={{ color: colors.text, fontSize: 15, fontWeight: '500' }}>{formatTime(item.startTime)}</Text>
-              <Text style={{ color: colors.mutedText, fontSize: 12 }}>to {formatTime(item.endTime)}</Text>
-            </View>
-            <Switch
-              value={item.isInstanceEnabled} 
-              trackColor={{ false: colors.glassBorder, true: colors.success }}
-              thumbColor={'#FFF'}
-              onValueChange={() => handleToggleInstance(item)}
-            />
           </View>
         )}
         ListEmptyComponent={<Text style={{ color: colors.mutedText, textAlign: 'center', marginTop: 20 }}>No Routines</Text>}
