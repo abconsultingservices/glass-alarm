@@ -1,5 +1,5 @@
 import React, { useState, useRef } from 'react';
-import { View, Text, TextInput, Pressable, ScrollView, Platform, Switch, StyleSheet, Modal, Animated } from 'react-native';
+import { View, Text, TextInput, Pressable, ScrollView, Platform, Switch, StyleSheet, Modal, Animated, Dimensions } from 'react-native';
 import { useRouter } from 'expo-router';
 import { useThemedStyles } from '../hooks/useThemedStyles';
 import { validateValue, ValidationRule } from '../utils/ValidationEngine';
@@ -9,7 +9,9 @@ import DraggableFlatList, { ScaleDecorator, RenderItemParams } from 'react-nativ
 import { BlurView } from 'expo-blur';
 import Swipeable from 'react-native-gesture-handler/Swipeable';
 import { RectButton } from 'react-native-gesture-handler';
-import * as Crypto from 'expo-crypto'; // Added for GUID generation
+import * as Crypto from 'expo-crypto';
+
+const { width: SCREEN_WIDTH } = Dimensions.get('window');
 
 interface Field {
     key: string;
@@ -32,6 +34,10 @@ interface Section {
     readOnly?: boolean; 
     isRepeater?: boolean;
     repeaterKey?: string;
+    config?: {
+        showCheckmark?: boolean;
+        enableSwipeDelete?: boolean;
+    };
 }
 
 interface Props {
@@ -54,26 +60,49 @@ const formatDisplayValue = (rawValue: string, type: string) => {
     return rawValue;
 };
 
-const GlassTaskList = ({ tasks, onUpdate, styles, colors, getPressedStyle, setScrollEnabled }: any) => {
+const GlassTaskList = ({ tasks, onUpdate, styles, colors, getPressedStyle, setScrollEnabled, config }: any) => {
+    const showCheckmark = config?.showCheckmark !== false;
     
-    const renderRightActions = (progress: Animated.AnimatedInterpolation<number>, dragX: Animated.AnimatedInterpolation<number>, id: string) => {
+    const renderRightActions = (
+        progress: Animated.AnimatedInterpolation<number>, 
+        dragX: Animated.AnimatedInterpolation<number>, 
+        id: string
+    ) => {
         const trans = dragX.interpolate({
             inputRange: [-80, 0],
             outputRange: [0, 80],
             extrapolate: 'clamp',
         });
+
         return (
-            <RectButton 
-                style={[localStyles.deleteAction, { backgroundColor: colors.error }]} 
-                onPress={() => {
-                    const updated = tasks.filter((t: any) => t.id !== id);
-                    onUpdate(updated);
-                }}
-            >
-                <Animated.View style={{ transform: [{ translateX: trans }] }}>
-                    <Ionicons name="trash-outline" size={24} color="#FFF" />
-                </Animated.View>
-            </RectButton>
+            <View style={{ 
+                width: 80, 
+                flexDirection: 'row',
+                justifyContent: 'flex-end', 
+                alignItems: 'center',
+                paddingVertical: 4, 
+                paddingRight: 8,
+                backgroundColor: 'transparent'
+            }}>
+                <RectButton 
+                    style={{
+                        backgroundColor: colors.error,
+                        width: 60,           
+                        height: '85%',       
+                        borderRadius: 12,    
+                        justifyContent: 'center',
+                        alignItems: 'center',
+                    }} 
+                    onPress={() => {
+                        const updated = tasks.filter((t: any) => t.id !== id);
+                        onUpdate(updated);
+                    }}
+                >
+                    <Animated.View style={{ transform: [{ translateX: trans }] }}>
+                        <Ionicons name="trash-outline" size={22} color="#FFF" />
+                    </Animated.View>
+                </RectButton>
+            </View>
         );
     };
 
@@ -95,12 +124,18 @@ const GlassTaskList = ({ tasks, onUpdate, styles, colors, getPressedStyle, setSc
                                 renderRightActions={(progress, dragX) => renderRightActions(progress, dragX, item.id)}
                                 friction={2}
                                 rightThreshold={40}
+                                overshootRight={false}
+                                containerStyle={{ backgroundColor: 'transparent' }}
                             >
                                 <View style={[
                                     styles.inputRow, 
                                     { 
-                                        backgroundColor: isActive ? 'rgba(255,255,255,0.15)' : colors.glassBackground, 
-                                        zIndex: isActive ? 999 : 1 
+                                        backgroundColor: isActive ? 'rgba(255,255,255,0.25)' : colors.glassBackground, 
+                                        zIndex: isActive ? 999 : 1,
+                                        flexDirection: 'row',
+                                        alignItems: 'center',
+                                        minHeight: 54,
+                                        width: SCREEN_WIDTH - 32,
                                     }
                                 ] as any}>
                                     <Pressable onLongPress={drag} delayLongPress={150} style={{ paddingLeft: 16 }}>
@@ -110,34 +145,58 @@ const GlassTaskList = ({ tasks, onUpdate, styles, colors, getPressedStyle, setSc
                                     <TextInput
                                         style={[
                                             styles.inputField, 
-                                            { flex: 1, paddingLeft: 12, color: colors.text },
-                                            item.completed && { textDecorationLine: 'line-through', opacity: 0.5 }
+                                            { 
+                                                flex: 1, 
+                                                paddingLeft: 12, 
+                                                color: colors.text,
+                                                textAlign: 'left',
+                                                // FIXED: InteractionManager-related simulator noise fix
+                                                minHeight: 0,
+                                                overflow: 'hidden',
+                                            },
+                                            (showCheckmark && item.completed && (item.text || item.title)) && { textDecorationLine: 'line-through', opacity: 0.5 }
                                         ]}
                                         value={item.text || item.title || ''}
                                         placeholder="Task description..."
                                         placeholderTextColor={colors.placeholderText}
                                         onChangeText={(text) => {
-                                            // Sync both text and title keys for DB compatibility
                                             const updated = tasks.map((t: any) => t.id === item.id ? { ...t, text, title: text } : t);
                                             onUpdate(updated);
                                         }}
                                     />
 
-                                    <Pressable 
-                                        onPress={() => {
-                                            const updated = tasks.map((t: any) => 
-                                                t.id === item.id ? { ...t, completed: !t.completed } : t
-                                            );
-                                            onUpdate(updated);
-                                        }} 
-                                        style={({ pressed }) => [getPressedStyle(pressed), { paddingHorizontal: 16 }]}
-                                    >
-                                        <Ionicons 
-                                            name={item.completed ? "checkmark-circle" : "ellipse-outline"} 
-                                            size={24} 
-                                            color={item.completed ? colors.success : colors.mutedText} 
-                                        />
-                                    </Pressable>
+                                    {showCheckmark ? (
+                                        <Pressable 
+                                            onPress={() => {
+                                                const updated = tasks.map((t: any) => 
+                                                    t.id === item.id ? { ...t, completed: !t.completed } : t
+                                                );
+                                                onUpdate(updated);
+                                            }} 
+                                            style={({ pressed }) => [getPressedStyle(pressed), { paddingHorizontal: 16 }]}
+                                        >
+                                            <Ionicons 
+                                                name={item.completed ? "checkmark-circle" : "ellipse-outline"} 
+                                                size={24} 
+                                                color={item.completed ? colors.success : colors.mutedText} 
+                                            />
+                                        </Pressable>
+                                    ) : (
+                                        <Pressable 
+                                            onPress={() => {
+                                                const updated = tasks.filter((t: any) => t.id !== item.id);
+                                                onUpdate(updated);
+                                            }}
+                                            style={({ pressed }) => [styles.circularButton, getPressedStyle(pressed), { marginHorizontal: 16 }]}
+                                        >
+                                            <Ionicons 
+                                                name="trash-outline" 
+                                                size={22} 
+                                                color={colors.error} 
+                                                style={{ opacity: 0.8 }}
+                                            />
+                                        </Pressable>
+                                    )}
                                 </View>
                             </Swipeable>
                             <View style={styles.divider} />
@@ -431,6 +490,7 @@ export const GlassFormRenderer = ({ schema, form, setForm, errors, setErrors }: 
                                 colors={colors} 
                                 getPressedStyle={getPressedStyle} 
                                 setScrollEnabled={setScrollEnabled} 
+                                config={section.config}
                             />
                         ) : section.isRepeater && section.repeaterKey ? (
                             <View>
@@ -438,15 +498,17 @@ export const GlassFormRenderer = ({ schema, form, setForm, errors, setErrors }: 
                                     <View key={`rep-${sIdx}-${rIdx}`} style={[styles.insetGroup, { marginBottom: 12 }]}>
                                         {section.fields.map((field, fIdx) => renderField(field, fIdx === section.fields.length - 1, section, sIdx, rIdx, section.repeaterKey))}
                                         
-                                        {/* Nested Tasks within an instance */}
-                                        <GlassTaskList 
-                                            tasks={item.tasks || []} 
-                                            onUpdate={(newTasks: any) => updateTaskSection(section.repeaterKey, rIdx, newTasks)}
-                                            styles={styles} 
-                                            colors={colors} 
-                                            getPressedStyle={getPressedStyle} 
-                                            setScrollEnabled={setScrollEnabled}
-                                        />
+                                        {item.hasOwnProperty('tasks') && Array.isArray(item.tasks) && (
+                                            <GlassTaskList 
+                                                tasks={item.tasks || []} 
+                                                onUpdate={(newTasks: any) => updateTaskSection(section.repeaterKey, rIdx, newTasks)}
+                                                styles={styles} 
+                                                colors={colors} 
+                                                getPressedStyle={getPressedStyle} 
+                                                setScrollEnabled={setScrollEnabled}
+                                                config={section.config}
+                                            />
+                                        )}
 
                                         <Pressable 
                                             onPress={() => {
@@ -458,7 +520,12 @@ export const GlassFormRenderer = ({ schema, form, setForm, errors, setErrors }: 
                                             }}
                                             style={({ pressed }) => [getPressedStyle(pressed), { padding: 12, alignItems: 'center', borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: colors.glassBorder }]}
                                         >
-                                            <Text style={{ color: colors.error, fontSize: 15, fontWeight: '500' }}>Remove {section.label?.replace(/s$/i, '') || 'Block'}</Text>
+                                            {/* FIXED: Circle button with destructive style applied to text */}
+                                            <View style={[styles.inputContainer, { borderRadius: 30, paddingHorizontal: 20, marginHorizontal: '10%' }]}>
+                                              <Text style={[styles.pillButtonDestructive, { color: colors.error, fontSize: 16, fontWeight: '600', paddingVertical: 12 }]}>
+                                                Remove {section.label?.replace(/s$/i, '') || 'Block'}
+                                              </Text>
+                                            </View>
                                         </Pressable>
                                     </View>
                                 ))}
@@ -466,11 +533,10 @@ export const GlassFormRenderer = ({ schema, form, setForm, errors, setErrors }: 
                                     onPress={() => {
                                         setForm((prev: any) => {
                                             const newItem = section.fields.reduce((acc, curr) => ({ ...acc, [curr.key]: '' }), {
-                                                id: Crypto.randomUUID(), // Proper ID generation
+                                                id: Crypto.randomUUID(),
                                                 type: 'daily',
                                                 startTime: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', hour12: false }),
-                                                startDate: new Date().toISOString().split('T')[0],
-                                                tasks: []
+                                                startDate: new Date().toISOString().split('T')[0]
                                             });
                                             return { ...prev, [section.repeaterKey!]: [...(prev[section.repeaterKey!] || []), JSON.parse(JSON.stringify(newItem))] };
                                         });
@@ -486,7 +552,7 @@ export const GlassFormRenderer = ({ schema, form, setForm, errors, setErrors }: 
                                 {section.fields.map((field, fIdx) => renderField(field, fIdx === section.fields.length - 1, section, sIdx))}
                             </View>
                         )}
-                        {!!section.footer && <Text style={styles.groupFootnote}>{section.footer}</Text>}
+                        {!!section.footer && <Text style={section.sectionType === 'tasks' ? [styles.groupFootnote, { marginTop: -15 }] : styles.groupFootnote}>{section.footer}</Text>}
                     </View>
                 ))}
             </ScrollView>
@@ -533,5 +599,6 @@ const localStyles = StyleSheet.create({
     menuWrapper: { width: '85%', maxWidth: 280, shadowColor: '#000', shadowOffset: { width: 0, height: 10 }, shadowOpacity: 0.25, shadowRadius: 20 },
     menuContainer: { borderRadius: 14, overflow: 'hidden', borderWidth: StyleSheet.hairlineWidth, borderColor: 'rgba(255,255,255,0.2)' },
     menuItem: { flexDirection: 'row', alignItems: 'center', padding: 16, minHeight: 48 },
-    subLabel: { color: '#888', fontSize: 12, marginBottom: 8, textTransform: 'uppercase', fontWeight: '600' }
+    subLabel: { color: '#888', fontSize: 12, marginBottom: 8, textTransform: 'uppercase', fontWeight: '600' },
+    deleteAction: { flex: 1, justifyContent: 'center', alignItems: 'flex-end', paddingRight: 20 }
 });

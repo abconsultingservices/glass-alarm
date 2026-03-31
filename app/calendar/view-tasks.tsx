@@ -1,5 +1,5 @@
 import React, { useState, useRef, useMemo, useEffect } from 'react';
-import { View, Text, Pressable, Animated, ScrollView, Platform, DeviceEventEmitter, ActivityIndicator } from 'react-native';
+import { View, Text, Pressable, Animated, ScrollView, Platform, DeviceEventEmitter, ActivityIndicator, ActionSheetIOS } from 'react-native';
 import { useRouter, useLocalSearchParams } from 'expo-router'; 
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useThemedStyles } from '../../hooks/useThemedStyles';
@@ -15,6 +15,7 @@ export default function ViewTasks() {
 
     const [loading, setLoading] = useState(true);
     const [form, setForm] = useState<any>({ tasks: [] });
+    const [initialTasksState, setInitialTasksState] = useState<string>(''); // For QoL Change Tracking
     const [errors, setErrors] = useState({});
     const shakeAnim = useRef(new Animated.Value(0)).current;
 
@@ -32,12 +33,10 @@ export default function ViewTasks() {
         }
     ], []);
 
-    // --- LOAD DATA (MERGED WITH INSTANCE LOGIC) ---
+    // --- LOAD DATA ---
     useEffect(() => {
         const loadRoutine = async () => {
             if (params.routineId) {
-                // We must use getRoutineById with date and instanceIndex 
-                // to pull the previously saved checkboxes!
                 const data = await RoutineService.getRoutineById(
                     params.routineId as string,
                     params.date as string,
@@ -46,6 +45,8 @@ export default function ViewTasks() {
                 
                 if (data) {
                     setForm(data);
+                    // Snapshot the loaded state to compare later
+                    setInitialTasksState(JSON.stringify(data.tasks));
                 }
             }
             setLoading(false);
@@ -58,7 +59,6 @@ export default function ViewTasks() {
         const subscription = DeviceEventEmitter.addListener('FORM_FIELD_UPDATE', (data) => {
             const { key, value, index, repeaterKey } = data;
             setForm((prev: any) => {
-                // Deep clone to ensure state update triggers re-render
                 const newForm = JSON.parse(JSON.stringify(prev));
                 if (repeaterKey === 'tasks' && typeof index === 'number') {
                     newForm.tasks[index][key] = value;
@@ -72,25 +72,70 @@ export default function ViewTasks() {
     }, []);
 
     const handleSave = async () => {
-        const success = await RoutineService.updateTaskInstances(
-            params.routineId as string,
-            params.date as string,
-            parseInt(params.instanceIndex as string || '0'),
-            form.tasks
-        );
+        const currentTasksState = JSON.stringify(form.tasks);
+        const hasAnyChanges = currentTasksState !== initialTasksState;
 
-        if (success) {
-            // Signal to the Month view that data has changed
-            DeviceEventEmitter.emit('ROUTINE_UPDATE_SUCCESS');
+        if (!hasAnyChanges) {
             router.back();
+            return;
+        }
+
+        // 2. Check for STRUCTURAL changes (Name, Order, Add/Remove)
+        // We do this by creating a version of both lists where 'completed' is stripped out
+        const stripStatus = (tasks: any[]) => 
+            tasks.map(({ completed, ...rest }) => rest);
+
+        const initialStructure = JSON.stringify(stripStatus(JSON.parse(initialTasksState)));
+        const currentStructure = JSON.stringify(stripStatus(form.tasks));
+        
+        const hasStructuralChanges = initialStructure !== currentStructure;
+
+        // Helper function for the actual service call
+        const executeSave = async (scope: 'instance' | 'day' | 'future') => {
+            const success = await RoutineService.updateTaskInstances(
+                params.routineId as string,
+                params.date as string,
+                parseInt(params.instanceIndex as string || '0'),
+                form.tasks,
+                scope
+            );
+
+            if (success) {
+                DeviceEventEmitter.emit('ROUTINE_UPDATE_SUCCESS');
+                router.back();
+            } else {
+                Animated.sequence([
+                    Animated.timing(shakeAnim, { toValue: 10, duration: 45, useNativeDriver: true }),
+                    Animated.timing(shakeAnim, { toValue: -10, duration: 45, useNativeDriver: true }),
+                    Animated.timing(shakeAnim, { toValue: 10, duration: 45, useNativeDriver: true }),
+                    Animated.timing(shakeAnim, { toValue: 0, duration: 45, useNativeDriver: true }),
+                ]).start();
+            }
+        };
+
+        // --- THE LOGIC GATE ---
+        if (!hasStructuralChanges) {
+            // If only completion status changed, save for this instance only and don't nag
+            await executeSave('instance');
         } else {
-            // Shake on failure
-            Animated.sequence([
-                Animated.timing(shakeAnim, { toValue: 10, duration: 45, useNativeDriver: true }),
-                Animated.timing(shakeAnim, { toValue: -10, duration: 45, useNativeDriver: true }),
-                Animated.timing(shakeAnim, { toValue: 10, duration: 45, useNativeDriver: true }),
-                Animated.timing(shakeAnim, { toValue: 0, duration: 45, useNativeDriver: true }),
-            ]).start();
+            // If names, order, or task count changed, ask how to propagate
+            if (Platform.OS === 'ios') {
+                ActionSheetIOS.showActionSheetWithOptions(
+                    {
+                        options: ['Cancel', 'This Instance Only', 'All Instances Today', 'All Future Instances'],
+                        cancelButtonIndex: 0,
+                        title: 'Save Changes',
+                        message: 'You modified the routine structure. Apply this to other times?',
+                    },
+                    (buttonIndex) => {
+                        if (buttonIndex === 1) executeSave('instance');
+                        if (buttonIndex === 2) executeSave('day');
+                        if (buttonIndex === 3) executeSave('future');
+                    }
+                );
+            } else {
+                await executeSave('instance');
+            }
         }
     };
 

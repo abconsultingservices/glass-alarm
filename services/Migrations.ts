@@ -150,16 +150,17 @@ CREATE TABLE IF NOT EXISTS routine_tasks (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     rtguid TEXT NOT NULL UNIQUE,
     rguid TEXT NOT NULL,
-    uguid TEXT NOT NULL,             -- Added
-    gguid TEXT NOT NULL,             -- Added
+    uguid TEXT NOT NULL,
+    gguid TEXT NOT NULL,
     text TEXT NOT NULL,
     displayOrder INTEGER NOT NULL,
     isComplete INTEGER DEFAULT 0,
+    isInstanceTask INTEGER DEFAULT 0,  -- 0 = Master, 1 = Instance-Specific/Shadow
     createDate TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     createdBy TEXT NOT NULL,
     lastModifiedDate TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     lastModifiedBy TEXT NOT NULL,
-    FOREIGN KEY(rguid) REFERENCES routines(rguid) ON DELETE CASCADE,
+    FOREIGN KEY(rguid) REFERENCES routines(rguid) ON DELETE CASCADE
     FOREIGN KEY(uguid) REFERENCES users(uguid),
     FOREIGN KEY(gguid) REFERENCES groups(gguid) ON DELETE CASCADE
 );
@@ -169,10 +170,15 @@ CREATE TABLE IF NOT EXISTS routine_tasks (
 CREATE TABLE IF NOT EXISTS task_instances (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     tiguid TEXT NOT NULL UNIQUE,
-    riguid TEXT NOT NULL,            -- Links to the specific Routine Instance for that day
-    rtguid TEXT NOT NULL,            -- Links back to the Master Routine Task
+    riguid TEXT NOT NULL,            -- Links to specific Routine Instance
+    rtguid TEXT NOT NULL,            -- Links back to Master Routine Task
     uguid TEXT NOT NULL,
-    isComplete INTEGER DEFAULT 0,    -- This is the UNIQUE completion state for TODAY
+    text TEXT NOT NULL,              -- Added: Store current text for this instance
+    displayOrder INTEGER NOT NULL,   -- Added: Store current order for this instance
+    isComplete INTEGER DEFAULT 0,
+    createDate TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    createdBy TEXT NOT NULL,         -- Added
+    lastModifiedBy TEXT NOT NULL,    -- Added
     lastModifiedDate TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     FOREIGN KEY(riguid) REFERENCES routine_instances(riguid) ON DELETE CASCADE,
     FOREIGN KEY(rtguid) REFERENCES routine_tasks(rtguid) ON DELETE CASCADE,

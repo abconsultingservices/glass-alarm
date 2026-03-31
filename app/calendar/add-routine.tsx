@@ -92,7 +92,11 @@ export default function AddRoutine() {
                 sectionType: 'tasks' as const,
                 label: 'ROUTINE TASKS',
                 footer: 'Add steps to your routine. Long-press the handle to reorder.',
-                fields: [] 
+                fields: [] ,
+                config: {
+                    showCheckmark: false, 
+                    enableSwipeDelete: true 
+                }
             }];
         }
 

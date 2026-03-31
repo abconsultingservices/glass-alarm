@@ -286,6 +286,7 @@ class DatabaseService {
                 DROP TABLE IF EXISTS users;
                 DROP TABLE IF EXISTS groups;
                 DROP TABLE IF EXISTS ringtones;
+                DROP TABLE IF EXISTS task_instances;
             `);
             await sqlite.execAsync('PRAGMA foreign_keys = ON;');
             this.initPromise = null;
