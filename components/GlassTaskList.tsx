@@ -3,31 +3,35 @@ import { View, Text, TextInput, Pressable, StyleSheet, Platform } from 'react-na
 import DraggableFlatList, { ScaleDecorator, RenderItemParams } from 'react-native-draggable-flatlist';
 import { Ionicons } from '@expo/vector-icons';
 import { useThemedStyles } from '../hooks/useThemedStyles';
+import * as Crypto from 'expo-crypto'; // Need this for valid DB IDs
 
 interface Task {
   id: string;
-  text: string;
-  completed?: boolean; // Track completion status
+  title: string; // Changed from 'text' to 'title' to match RoutineService
+  completed?: boolean;
 }
 
 export const GlassTaskList = ({ tasks, setTasks }: { tasks: Task[], setTasks: (t: Task[]) => void }) => {
   const { colors, styles, getPressedStyle } = useThemedStyles();
 
   const addTask = () => {
-    // ID as string to match existing logic, text starts empty
-    setTasks([...tasks, { id: Date.now().toString(), text: '', completed: false }]);
+    // 1. Use Crypto.randomUUID() so the database accepts the new ID
+    // 2. Use 'title' instead of 'text' to stay in sync with the service
+    setTasks([...tasks, { 
+        id: Crypto.randomUUID(), 
+        title: '', 
+        completed: false 
+    }]);
   };
 
   const toggleComplete = (id: string) => {
     setTasks(tasks.map(t => t.id === id ? { ...t, completed: !t.completed } : t));
   };
 
-  const updateTask = (id: string, text: string) => {
-    setTasks(tasks.map(t => t.id === id ? { ...t, text } : t));
+  const updateTask = (id: string, title: string) => {
+    setTasks(tasks.map(t => t.id === id ? { ...t, title } : t));
   };
 
-  // Note: Swipe-to-delete usually requires a wrapper from react-native-gesture-handler.
-  // For now, we've removed the trash icon as requested.
   const renderItem = ({ item, drag, isActive }: RenderItemParams<Task>) => {
     return (
       <ScaleDecorator>
@@ -40,25 +44,23 @@ export const GlassTaskList = ({ tasks, setTasks }: { tasks: Task[], setTasks: (t
             isActive && { borderRadius: 12, borderWidth: 1, borderColor: colors.glassBorder }
           ]}
         >
-          {/* Drag Handle - Reorder Icon */}
           <View style={{ paddingLeft: 16 }}>
             <Ionicons name="reorder-three" size={24} color={colors.mutedText} />
           </View>
 
-          {/* Task Input - Shows saved task names */}
           <TextInput
             style={[
               styles.inputField, 
               { flex: 1, paddingLeft: 12 },
               item.completed && { textDecorationLine: 'line-through', opacity: 0.5 }
             ]}
-            value={item.text}
+            // Using title here
+            value={item.title} 
             placeholder="Task description..."
             placeholderTextColor={colors.placeholderText}
             onChangeText={(text) => updateTask(item.id, text)}
           />
 
-          {/* Checkmark Completion Button (Replaces Trash) */}
           <Pressable 
             onPress={() => toggleComplete(item.id)}
             style={({ pressed }) => [getPressedStyle(pressed), { paddingHorizontal: 16 }]}

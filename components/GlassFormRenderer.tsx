@@ -1,5 +1,5 @@
 import React, { useState, useRef } from 'react';
-import { View, Text, TextInput, Pressable, ScrollView, Platform, Switch, StyleSheet, Modal } from 'react-native';
+import { View, Text, TextInput, Pressable, ScrollView, Platform, Switch, StyleSheet, Modal, Animated } from 'react-native';
 import { useRouter } from 'expo-router';
 import { useThemedStyles } from '../hooks/useThemedStyles';
 import { validateValue, ValidationRule } from '../utils/ValidationEngine';
@@ -7,6 +7,8 @@ import { Ionicons } from '@expo/vector-icons';
 import DateTimePicker from '@react-native-community/datetimepicker';
 import DraggableFlatList, { ScaleDecorator, RenderItemParams } from 'react-native-draggable-flatlist';
 import { BlurView } from 'expo-blur';
+import Swipeable from 'react-native-gesture-handler/Swipeable';
+import { RectButton } from 'react-native-gesture-handler';
 
 interface Field {
     key: string;
@@ -52,6 +54,28 @@ const formatDisplayValue = (rawValue: string, type: string) => {
 };
 
 const GlassTaskList = ({ tasks, onUpdate, styles, colors, getPressedStyle, setScrollEnabled }: any) => {
+    
+    const renderRightActions = (progress: Animated.AnimatedInterpolation<number>, dragX: Animated.AnimatedInterpolation<number>, id: string) => {
+        const trans = dragX.interpolate({
+            inputRange: [-80, 0],
+            outputRange: [0, 80],
+            extrapolate: 'clamp',
+        });
+        return (
+            <RectButton 
+                style={[localStyles.deleteAction, { backgroundColor: colors.error }]} 
+                onPress={() => {
+                    const updated = tasks.filter((t: any) => t.id !== id);
+                    onUpdate(updated);
+                }}
+            >
+                <Animated.View style={{ transform: [{ translateX: trans }] }}>
+                    <Ionicons name="trash-outline" size={24} color="#FFF" />
+                </Animated.View>
+            </RectButton>
+        );
+    };
+
     return (
         <View style={{ marginBottom: 20 }}>
             <View style={styles.insetGroup}>
@@ -66,56 +90,60 @@ const GlassTaskList = ({ tasks, onUpdate, styles, colors, getPressedStyle, setSc
                     scrollEnabled={false}
                     renderItem={({ item, drag, isActive }: RenderItemParams<any>) => (
                         <ScaleDecorator>
-                            <View style={[
-                                styles.inputRow, 
-                                { 
-                                    backgroundColor: isActive ? 'rgba(255,255,255,0.15)' : 'transparent', 
-                                    zIndex: isActive ? 999 : 1 
-                                }
-                            ] as any}>
-                                <Pressable onLongPress={drag} delayLongPress={150} style={{ paddingLeft: 16 }}>
-                                    <Ionicons name="reorder-three" size={24} color={colors.mutedText} style={{ opacity: 0.5 }} />
-                                </Pressable>
-                                
-                                <TextInput
-                                    style={[
-                                        styles.inputField, 
-                                        { flex: 1, paddingLeft: 12, color: colors.text },
-                                        item.completed && { textDecorationLine: 'line-through', opacity: 0.5 } // Strike-through effect
-                                    ]}
-                                    value={item.text || item.title || ''}
-                                    placeholder="Task description..."
-                                    placeholderTextColor={colors.placeholderText}
-                                    dataSet={{ 'glass-input': 'true' }}
-                                    onChangeText={(text) => {
-                                        const updated = tasks.map((t: any) => t.id === item.id ? { ...t, text } : t);
-                                        onUpdate(updated);
-                                    }}
-                                />
-
-                                {/* Completion Toggle (Replaces Trash Icon) */}
-                                <Pressable 
-                                    onPress={() => {
-                                        const updated = tasks.map((t: any) => 
-                                            t.id === item.id ? { ...t, completed: !t.completed } : t
-                                        );
-                                        onUpdate(updated);
-                                    }} 
-                                    style={({ pressed }) => [getPressedStyle(pressed), { paddingHorizontal: 16 }]}
-                                >
-                                    <Ionicons 
-                                        name={item.completed ? "checkmark-circle" : "ellipse-outline"} 
-                                        size={24} 
-                                        color={item.completed ? colors.success : colors.mutedText} 
+                            <Swipeable 
+                                renderRightActions={(progress, dragX) => renderRightActions(progress, dragX, item.id)}
+                                friction={2}
+                                rightThreshold={40}
+                            >
+                                <View style={[
+                                    styles.inputRow, 
+                                    { 
+                                        backgroundColor: isActive ? 'rgba(255,255,255,0.15)' : colors.glassBackground, 
+                                        zIndex: isActive ? 999 : 1 
+                                    }
+                                ] as any}>
+                                    <Pressable onLongPress={drag} delayLongPress={150} style={{ paddingLeft: 16 }}>
+                                        <Ionicons name="reorder-three" size={24} color={colors.mutedText} style={{ opacity: 0.5 }} />
+                                    </Pressable>
+                                    
+                                    <TextInput
+                                        style={[
+                                            styles.inputField, 
+                                            { flex: 1, paddingLeft: 12, color: colors.text },
+                                            item.completed && { textDecorationLine: 'line-through', opacity: 0.5 }
+                                        ]}
+                                        value={item.text || item.title || ''}
+                                        placeholder="Task description..."
+                                        placeholderTextColor={colors.placeholderText}
+                                        onChangeText={(text) => {
+                                            const updated = tasks.map((t: any) => t.id === item.id ? { ...t, text, title: text } : t);
+                                            onUpdate(updated);
+                                        }}
                                     />
-                                </Pressable>
-                            </View>
+
+                                    <Pressable 
+                                        onPress={() => {
+                                            const updated = tasks.map((t: any) => 
+                                                t.id === item.id ? { ...t, completed: !t.completed } : t
+                                            );
+                                            onUpdate(updated);
+                                        }} 
+                                        style={({ pressed }) => [getPressedStyle(pressed), { paddingHorizontal: 16 }]}
+                                    >
+                                        <Ionicons 
+                                            name={item.completed ? "checkmark-circle" : "ellipse-outline"} 
+                                            size={24} 
+                                            color={item.completed ? colors.success : colors.mutedText} 
+                                        />
+                                    </Pressable>
+                                </View>
+                            </Swipeable>
                             <View style={styles.divider} />
                         </ScaleDecorator>
                     )}
                 />
                 <Pressable
-                    onPress={() => onUpdate([...(tasks || []), { id: Date.now().toString(), text: '', completed: false }])}
+                    onPress={() => onUpdate([...(tasks || []), { id: Date.now().toString(), text: '', title: '', completed: false }])}
                     style={({ pressed }) => [getPressedStyle(pressed), { flexDirection: 'row', alignItems: 'center', justifyContent: 'flex-start', padding: 16 }]}
                 >
                     <Ionicons name="add-circle" size={20} color={colors.text} style={{ opacity: 0.7 }} />
@@ -135,6 +163,21 @@ export const GlassFormRenderer = ({ schema, form, setForm, errors, setErrors }: 
     const [activeMenuIndex, setActiveMenuIndex] = useState<number | null>(null);
 
     const inputRefs = useRef<{[key: string]: any}>({});
+
+    // Helper to handle task state updates regardless of nesting level
+    const updateTaskSection = (repeaterKey: string | undefined, index: number | undefined, newTasks: any[]) => {
+        if (repeaterKey && typeof index === 'number') {
+            setForm((prev: any) => {
+                const updatedArray = JSON.parse(JSON.stringify(prev[repeaterKey] || []));
+                if (updatedArray[index]) {
+                    updatedArray[index].tasks = newTasks;
+                }
+                return { ...prev, [repeaterKey]: updatedArray };
+            });
+        } else {
+            setForm((prev: any) => ({ ...prev, tasks: newTasks }));
+        }
+    };
 
     const handleUpdate = (key: string, val: any, rules: ValidationRule[] = [], overrideFilter?: RegExp, type?: string, index?: number, repeaterKey?: string) => {
         let filteredVal = val;
@@ -378,13 +421,32 @@ export const GlassFormRenderer = ({ schema, form, setForm, errors, setErrors }: 
                 {schema.map((section, sIdx) => (
                     <View key={`s-${sIdx}`} style={{ marginBottom: 32 }}>
                         {!!section.label && <Text style={styles.fieldGroupTitle}>{section.label}</Text>}
+                        
                         {section.sectionType === 'tasks' ? (
-                            <GlassTaskList tasks={form.tasks || []} onUpdate={(newTasks: any) => setForm((prev: any) => ({ ...prev, tasks: newTasks }))} styles={styles} colors={colors} getPressedStyle={getPressedStyle} setScrollEnabled={setScrollEnabled} />
+                            <GlassTaskList 
+                                tasks={form.tasks || []} 
+                                onUpdate={(newTasks: any) => updateTaskSection(undefined, undefined, newTasks)} 
+                                styles={styles} 
+                                colors={colors} 
+                                getPressedStyle={getPressedStyle} 
+                                setScrollEnabled={setScrollEnabled} 
+                            />
                         ) : section.isRepeater && section.repeaterKey ? (
                             <View>
                                 {(form[section.repeaterKey] || []).map((item: any, rIdx: number) => (
                                     <View key={`rep-${sIdx}-${rIdx}`} style={[styles.insetGroup, { marginBottom: 12 }]}>
                                         {section.fields.map((field, fIdx) => renderField(field, fIdx === section.fields.length - 1, section, sIdx, rIdx, section.repeaterKey))}
+                                        
+                                        {/* Nested Tasks within an instance (Expansion View) */}
+                                        <GlassTaskList 
+                                            tasks={item.tasks || []} 
+                                            onUpdate={(newTasks: any) => updateTaskSection(section.repeaterKey, rIdx, newTasks)}
+                                            styles={styles} 
+                                            colors={colors} 
+                                            getPressedStyle={getPressedStyle} 
+                                            setScrollEnabled={setScrollEnabled}
+                                        />
+
                                         <Pressable 
                                             onPress={() => {
                                                 setForm((prev: any) => {
@@ -405,7 +467,8 @@ export const GlassFormRenderer = ({ schema, form, setForm, errors, setErrors }: 
                                             const newItem = section.fields.reduce((acc, curr) => ({ ...acc, [curr.key]: '' }), {
                                                 type: 'daily',
                                                 startTime: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', hour12: false }),
-                                                startDate: new Date().toISOString().split('T')[0]
+                                                startDate: new Date().toISOString().split('T')[0],
+                                                tasks: []
                                             });
                                             return { ...prev, [section.repeaterKey!]: [...(prev[section.repeaterKey!] || []), JSON.parse(JSON.stringify(newItem))] };
                                         });

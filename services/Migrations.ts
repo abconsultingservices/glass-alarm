@@ -114,16 +114,16 @@ CREATE TABLE IF NOT EXISTS routine_exceptions (
 CREATE TABLE IF NOT EXISTS routine_instances (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     riguid TEXT NOT NULL UNIQUE,
-    sguid TEXT NOT NULL,
-    uguid TEXT NOT NULL,             -- Added
-    gguid TEXT NOT NULL,             -- Added
+    rguid TEXT NOT NULL,             -- Linked to Routine Header
+    uguid TEXT NOT NULL,
+    gguid TEXT NOT NULL,
+    instanceDate TEXT NOT NULL,      -- e.g., '2026-03-29'
+    instanceIndex INTEGER DEFAULT 0, -- For routines that happen multiple times a day
     isComplete INTEGER DEFAULT 0,
-    instanceDate TEXT NOT NULL,
     startTime TEXT NOT NULL,
-    duration INTEGER NOT NULL,
     createDate TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     createdBy TEXT NOT NULL,
-    FOREIGN KEY(sguid) REFERENCES routine_schedules(sguid) ON DELETE CASCADE,
+    FOREIGN KEY(rguid) REFERENCES routines(rguid) ON DELETE CASCADE,
     FOREIGN KEY(uguid) REFERENCES users(uguid),
     FOREIGN KEY(gguid) REFERENCES groups(gguid) ON DELETE CASCADE
 );
@@ -162,5 +162,20 @@ CREATE TABLE IF NOT EXISTS routine_tasks (
     FOREIGN KEY(rguid) REFERENCES routines(rguid) ON DELETE CASCADE,
     FOREIGN KEY(uguid) REFERENCES users(uguid),
     FOREIGN KEY(gguid) REFERENCES groups(gguid) ON DELETE CASCADE
+);
+
+-- 9. New Task Instances Table
+-- This is where the actual "Checking off" happens
+CREATE TABLE IF NOT EXISTS task_instances (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    tiguid TEXT NOT NULL UNIQUE,
+    riguid TEXT NOT NULL,            -- Links to the specific Routine Instance for that day
+    rtguid TEXT NOT NULL,            -- Links back to the Master Routine Task
+    uguid TEXT NOT NULL,
+    isComplete INTEGER DEFAULT 0,    -- This is the UNIQUE completion state for TODAY
+    lastModifiedDate TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY(riguid) REFERENCES routine_instances(riguid) ON DELETE CASCADE,
+    FOREIGN KEY(rtguid) REFERENCES routine_tasks(rtguid) ON DELETE CASCADE,
+    FOREIGN KEY(uguid) REFERENCES users(uguid)
 );
 `;

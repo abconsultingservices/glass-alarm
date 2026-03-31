@@ -19,8 +19,6 @@ export default function ViewTasks() {
     const shakeAnim = useRef(new Animated.Value(0)).current;
 
     // --- DYNAMIC SCHEMA ---
-    // The GlassFormRenderer 'tasks' section handles rendering individual items.
-    // We pass custom props to indicate we want "check" mode instead of "delete" mode.
     const taskSchema = useMemo(() => [
         {
             sectionType: 'tasks' as const,
@@ -28,32 +26,39 @@ export default function ViewTasks() {
             footer: 'Check off items or reorder as needed.',
             fields: [],
             config: {
-                showCheckmark: true, // Custom flag for your renderer
+                showCheckmark: true,
                 enableSwipeDelete: true 
             }
         }
     ], []);
 
-    // --- LOAD DATA ---
+    // --- LOAD DATA (MERGED WITH INSTANCE LOGIC) ---
     useEffect(() => {
         const loadRoutine = async () => {
             if (params.routineId) {
-                const data = await RoutineService.getRoutineById(params.routineId as string);
+                // We must use getRoutineById with date and instanceIndex 
+                // to pull the previously saved checkboxes!
+                const data = await RoutineService.getRoutineById(
+                    params.routineId as string,
+                    params.date as string,
+                    parseInt(params.instanceIndex as string || '0')
+                );
+                
                 if (data) {
-                    // Ensure the tasks match the form structure (mapping 'text' from DB to 'title' for renderer)
                     setForm(data);
                 }
             }
             setLoading(false);
         };
         loadRoutine();
-    }, [params.routineId]);
+    }, [params.routineId, params.date, params.instanceIndex]);
 
     // --- FORM LISTENERS ---
     useEffect(() => {
         const subscription = DeviceEventEmitter.addListener('FORM_FIELD_UPDATE', (data) => {
             const { key, value, index, repeaterKey } = data;
             setForm((prev: any) => {
+                // Deep clone to ensure state update triggers re-render
                 const newForm = JSON.parse(JSON.stringify(prev));
                 if (repeaterKey === 'tasks' && typeof index === 'number') {
                     newForm.tasks[index][key] = value;
@@ -67,17 +72,23 @@ export default function ViewTasks() {
     }, []);
 
     const handleSave = async () => {
-        const success = await RoutineService.updateRoutineTasks(
-            params.routineId as string, 
+        const success = await RoutineService.updateTaskInstances(
+            params.routineId as string,
+            params.date as string,
+            parseInt(params.instanceIndex as string || '0'),
             form.tasks
         );
 
         if (success) {
+            // Signal to the Month view that data has changed
+            DeviceEventEmitter.emit('ROUTINE_UPDATE_SUCCESS');
             router.back();
         } else {
+            // Shake on failure
             Animated.sequence([
                 Animated.timing(shakeAnim, { toValue: 10, duration: 45, useNativeDriver: true }),
                 Animated.timing(shakeAnim, { toValue: -10, duration: 45, useNativeDriver: true }),
+                Animated.timing(shakeAnim, { toValue: 10, duration: 45, useNativeDriver: true }),
                 Animated.timing(shakeAnim, { toValue: 0, duration: 45, useNativeDriver: true }),
             ]).start();
         }
@@ -101,7 +112,7 @@ export default function ViewTasks() {
                 </Pressable>
                 
                 <View style={{ alignItems: 'center', flex: 1 }}>
-                    <Text style={styles.modalTitle}>{params.name || form.name || 'Tasks'}</Text>
+                    <Text style={styles.modalTitle} numberOfLines={1}>{params.name || form.name || 'Tasks'}</Text>
                     <Text style={{ color: colors.mutedText, fontSize: 12 }}>{params.date}</Text>
                 </View>
 
@@ -121,7 +132,7 @@ export default function ViewTasks() {
                 contentContainerStyle={{ paddingHorizontal: 16, paddingBottom: 100 }} 
                 showsVerticalScrollIndicator={false}
             >
-                <Animated.View style={{ transform: [{ translateX: shakeAnim }] }}>
+                <Animated.View style={{ transform: [{ translateX: shakeAnim }], flex: 1 }}>
                     <GlassFormRenderer 
                         schema={taskSchema}
                         form={form}

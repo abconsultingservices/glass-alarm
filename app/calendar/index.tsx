@@ -55,6 +55,7 @@ export default function CalendarMonthView() {
           setCurrentMonth(savedDate.substring(0, 7) + '-01');
         }
 
+        // Fetching routines and their completion states for the active date
         const [fetchedRoutines, fetchedExceptions] = await Promise.all([
           RoutineService.getRoutines(activeDate),
           RoutineService.getExceptions(activeDate)
@@ -139,37 +140,44 @@ export default function CalendarMonthView() {
     const expandedList: any[] = [];
 
     routines.forEach(routine => {
-      if (shouldShowRoutineOnDate(routine, selectedDate)) {
+        if (shouldShowRoutineOnDate(routine, selectedDate)) {
         const count = routine.maxOccurrences || 1;
         
         for (let i = 0; i < count; i++) {
-          const hasException = exceptions.some(ex => 
-            ex.routineId === routine.rguid && ex.date === selectedDate && ex.instanceIndex === i
-          );
+            const hasException = exceptions.some(ex => 
+                ex.routineId === routine.rguid && ex.date === selectedDate && ex.instanceIndex === i
+            );
 
-          const [h, min] = routine.startTime.split(':').map(Number);
-          const start = new Date(y, mon - 1, d, h, min, 0, 0);
+            const [h, min] = routine.startTime.split(':').map(Number);
+            const start = new Date(y, mon - 1, d, h, min, 0, 0);
 
-          if (i > 0 && routine.frequencyHours) {
-            start.setHours(start.getHours() + (i * routine.frequencyHours));
-          }
+            if (i > 0 && routine.frequencyHours) {
+                start.setHours(start.getHours() + (i * routine.frequencyHours));
+            }
 
-          const end = new Date(start.getTime() + (routine.duration || 30) * 60000);
+            const end = new Date(start.getTime() + (routine.duration || 30) * 60000);
 
-          expandedList.push({ 
-            ...routine, 
-            id: `${routine.rguid}-idx-${i}`,
-            originalId: routine.rguid,
-            startTime: start, 
-            endTime: end, 
-            instanceIndex: i, 
-            isInstanceEnabled: routine.isEnabled && !hasException 
-          });
+            // Calculate progress for feedback label
+            const totalTasks = routine.tasks?.length || 0;
+            const completedTasks = routine.tasks?.filter((t: any) => t.completed).length || 0;
+
+            expandedList.push({ 
+                ...routine, 
+                tasks: routine.tasks ? routine.tasks.map((t: any) => ({ ...t })) : [],
+                id: `${routine.rguid}-idx-${i}`,
+                originalId: routine.rguid,
+                startTime: start, 
+                endTime: end, 
+                instanceIndex: i, 
+                isInstanceEnabled: routine.isEnabled && !hasException,
+                progressLabel: totalTasks > 0 ? `${completedTasks}/${totalTasks}` : null,
+                isComplete: totalTasks > 0 && completedTasks === totalTasks
+            });
         }
-      }
+        }
     });
     return expandedList.sort((a, b) => a.startTime.getTime() - b.startTime.getTime());
-  }, [selectedDate, routines, exceptions]);
+    }, [selectedDate, routines, exceptions]);
 
   const { monthName, yearLabel } = useMemo(() => {
     const [y, m, d] = currentMonth.split('-').map(Number);
@@ -262,6 +270,7 @@ export default function CalendarMonthView() {
                   params: { 
                     routineId: item.originalId, 
                     date: selectedDate,
+                    instanceIndex: item.instanceIndex.toString(),
                     name: item.name 
                   }
                 })}
@@ -269,7 +278,23 @@ export default function CalendarMonthView() {
               >
                 <View style={{ flex: 1, opacity: item.isInstanceEnabled ? 1 : 0.4 }}>
                   <Text style={{ color: colors.text, fontSize: 17, fontWeight: '600' }}>{item.name}</Text>
-                  <Text style={{ color: colors.mutedText, fontSize: 13, marginTop: 2 }}>{item.type || 'daily'}</Text>
+                  <View style={{ flexDirection: 'row', alignItems: 'center', marginTop: 2 }}>
+                    <Text style={{ color: colors.mutedText, fontSize: 13 }}>
+                        {item.type || 'daily'} {item.maxOccurrences > 1 ? `(${item.instanceIndex + 1})` : ''}
+                    </Text>
+                    {item.progressLabel && (
+                        <>
+                            <Text style={{ color: colors.mutedText, fontSize: 13, marginHorizontal: 6 }}>•</Text>
+                            <Text style={{ 
+                                color: item.isComplete ? colors.success : colors.mutedText, 
+                                fontSize: 13, 
+                                fontWeight: '600' 
+                            }}>
+                                {item.progressLabel} Tasks
+                            </Text>
+                        </>
+                    )}
+                  </View>
                 </View>
                 <View style={{ alignItems: 'flex-end', marginRight: 12, opacity: item.isInstanceEnabled ? 1 : 0.4 }}>
                   <Text style={{ color: colors.text, fontSize: 15, fontWeight: '500' }}>{formatTime(item.startTime)}</Text>
@@ -289,7 +314,7 @@ export default function CalendarMonthView() {
         ListEmptyComponent={<Text style={{ color: colors.mutedText, textAlign: 'center', marginTop: 20 }}>No Routines</Text>}
       />
 
-      {/* --- DE-COUPLED FLOATING ACTION LAYER --- */}
+      {/* --- FLOATING ACTION LAYER --- */}
       <View style={[
         localStyles.floatingFooter, 
         { bottom: insets.bottom > 0 ? insets.bottom - 16 : 4 }

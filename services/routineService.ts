@@ -5,7 +5,7 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 export interface RoutineWithSchedule {
   rguid: string;
   name: string;
-  isEnabled: boolean; // Maps to isActive in DB
+  isEnabled: boolean; 
   duration: number;
   type: string; 
   customDays: string;
@@ -15,6 +15,8 @@ export interface RoutineWithSchedule {
   endTime: string | null;
   frequencyHours: number | null;
   maxOccurrences: number | null;
+  // Added for state maintenance
+  tasks?: any[]; 
 }
 
 export interface RoutineException {
@@ -24,9 +26,6 @@ export interface RoutineException {
 }
 
 export const RoutineService = {
-  /**
-   * Helper to get current session identifiers
-   */
   getGuids: async () => {
     let uguid = await AsyncStorage.getItem('session_uguid');
     let gguid = await AsyncStorage.getItem('session_gguid');
@@ -38,15 +37,16 @@ export const RoutineService = {
   },
 
   /**
-   * Fetches routines valid for a specific date
+   * UPDATED: Fetches routines AND hydrates them with task completion data 
+   * for the specific date provided.
    */
   getRoutines: async (targetDateISO: string): Promise<RoutineWithSchedule[]> => {
     try {
       const db = await (dbService as any).getDb();
       const { gguid } = await RoutineService.getGuids();
-      
       if (!gguid) return [];
 
+      // 1. Get the base routines and schedules
       const sql = `
         SELECT 
           r.rguid, r.name, r.isActive as isEnabled, r.duration,
@@ -60,7 +60,19 @@ export const RoutineService = {
           AND (s.endDate IS NULL OR s.endDate >= ?)`;
 
       const rows = await db.getAllAsync(sql, [gguid, targetDateISO, targetDateISO]);
-      return rows.map((row: any) => ({ ...row, isEnabled: row.isEnabled === 1 }));
+      
+      // 2. Hydrate each routine with its tasks and completion status for this specific date
+      // We do this so the Month view knows which "bubbles" to fill in.
+      const routinesWithTasks = await Promise.all(rows.map(async (row: any) => {
+        const tasks = await RoutineService.getTasksForDate(row.rguid, targetDateISO);
+        return { 
+          ...row, 
+          isEnabled: row.isEnabled === 1,
+          tasks: tasks 
+        };
+      }));
+
+      return routinesWithTasks;
     } catch (e) {
       console.error("RoutineService.getRoutines failed:", e);
       return [];
@@ -68,9 +80,27 @@ export const RoutineService = {
   },
 
   /**
-   * Fetches a single routine and its tasks for the ViewTasks screen
+   * Helper: Fetches tasks for a specific date (used by getRoutines)
    */
-  getRoutineById: async (rguid: string): Promise<any | null> => {
+  getTasksForDate: async (rguid: string, date: string): Promise<any[]> => {
+    const db = await (dbService as any).getDb();
+    const sql = `
+      SELECT 
+        rt.rtguid as id, rt.text as title, rt.displayOrder,
+        COALESCE(ti.isComplete, 0) as completed
+      FROM routine_tasks rt
+      LEFT JOIN routine_instances ri ON ri.rguid = rt.rguid AND ri.instanceDate = ?
+      LEFT JOIN task_instances ti ON ti.riguid = ri.riguid AND ti.rtguid = rt.rtguid
+      WHERE rt.rguid = ?
+      ORDER BY rt.displayOrder ASC`;
+    const rows = await db.getAllAsync(sql, [date, rguid]);
+    return rows.map((r: any) => ({ ...r, completed: r.completed === 1 }));
+  },
+
+  /**
+   * Fetches routine + tasks for a SPECIFIC instance (e.g., the 2nd time a routine runs today)
+   */
+  getRoutineById: async (rguid: string, date: string, instanceIndex: number = 0): Promise<any | null> => {
     try {
       const db = await (dbService as any).getDb();
       const routine = await db.getFirstAsync(
@@ -80,18 +110,28 @@ export const RoutineService = {
       
       if (!routine) return null;
 
-      const tasks = await db.getAllAsync(
-        `SELECT rtguid, text, displayOrder, isComplete FROM routine_tasks WHERE rguid = ? ORDER BY displayOrder ASC`,
-        [rguid]
-      );
+      const tasksSql = `
+        SELECT 
+          rt.rtguid, rt.text, rt.displayOrder, 
+          COALESCE(ti.isComplete, 0) as isCompleteInstance
+        FROM routine_tasks rt
+        LEFT JOIN routine_instances ri ON ri.rguid = rt.rguid 
+          AND ri.instanceDate = ? 
+          AND ri.instanceIndex = ?
+        LEFT JOIN task_instances ti ON ti.riguid = ri.riguid 
+          AND ti.rtguid = rt.rtguid
+        WHERE rt.rguid = ?
+        ORDER BY rt.displayOrder ASC`;
+
+      const tasks = await db.getAllAsync(tasksSql, [date, instanceIndex, rguid]);
 
       return {
         ...routine,
         isEnabled: routine.isActive === 1,
         tasks: tasks.map((t: any) => ({
           id: t.rtguid,
-          title: t.text, // Mapping schema 'text' to form 'title'
-          completed: t.isComplete === 1,
+          title: t.text,
+          completed: t.isCompleteInstance === 1,
           displayOrder: t.displayOrder
         }))
       };
@@ -102,41 +142,54 @@ export const RoutineService = {
   },
 
   /**
-   * Updates tasks using the schema-defined fields (text, displayOrder, isComplete)
+   * Updates task completion for a SPECIFIC DATE/INSTANCE only
    */
-  updateRoutineTasks: async (rguid: string, tasks: any[]): Promise<boolean> => {
+  updateTaskInstances: async (rguid: string, date: string, instanceIndex: number, tasks: any[]): Promise<boolean> => {
     try {
       const db = await (dbService as any).getDb();
       const { uguid, gguid } = await RoutineService.getGuids();
       if (!uguid || !gguid) return false;
 
       await db.withTransactionAsync(async () => {
-        await db.runAsync(`DELETE FROM routine_tasks WHERE rguid = ?`, [rguid]);
+        // 1. Ensure the "Header" (Routine Instance) exists
+        let ri = await db.getFirstAsync(
+          `SELECT riguid FROM routine_instances WHERE rguid = ? AND instanceDate = ? AND instanceIndex = ?`,
+          [rguid, date, instanceIndex]
+        );
 
-        for (let i = 0; i < tasks.length; i++) {
-          const task = tasks[i];
+        let riguid = ri?.riguid;
+
+        if (!riguid) {
+          riguid = Crypto.randomUUID();
           await db.runAsync(
-            `INSERT INTO routine_tasks (
-              rtguid, rguid, uguid, gguid, text, displayOrder, isComplete, 
-              createdBy, createDate, lastModifiedBy, lastModifiedDate
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP, ?, CURRENT_TIMESTAMP)`,
-            [
-              task.id || Crypto.randomUUID(), 
-              rguid, uguid, gguid, 
-              task.title || task.text, // Ensure we catch whichever key the form is using
-              i, 
-              task.completed ? 1 : 0, 
-              uguid, uguid
-            ]
+            `INSERT INTO routine_instances (riguid, rguid, uguid, gguid, instanceDate, instanceIndex, startTime, createdBy)
+             VALUES (?, ?, ?, ?, ?, ?, '00:00', ?)`,
+            [riguid, rguid, uguid, gguid, date, instanceIndex, uguid]
+          );
+        }
+
+        // 2. Clear previous task states for this instance
+        await db.runAsync(`DELETE FROM task_instances WHERE riguid = ?`, [riguid]);
+
+        // 3. Insert current tasks
+        for (const task of tasks) {
+          // IMPORTANT: If this is a brand new task added via the UI, 
+          // it might not have an 'id' yet. We use its existing id or a fallback.
+          const taskId = task.id || task.rtguid || Crypto.randomUUID();
+          
+          await db.runAsync(
+            `INSERT INTO task_instances (tiguid, riguid, rtguid, uguid, isComplete)
+             VALUES (?, ?, ?, ?, ?)`,
+            [Crypto.randomUUID(), riguid, taskId, uguid, task.completed ? 1 : 0]
           );
         }
       });
       return true;
     } catch (e) {
-      console.error("RoutineService.updateRoutineTasks failed:", e);
+      console.error("Failed to save task instances:", e);
       return false;
     }
-  },
+},
 
   getExceptions: async (targetDateISO: string): Promise<RoutineException[]> => {
     try {
@@ -144,10 +197,11 @@ export const RoutineService = {
       const { gguid } = await RoutineService.getGuids();
       if (!gguid) return [];
 
-      return await db.getAllAsync(
+      const rows = await db.getAllAsync(
         "SELECT rguid as routineId, instanceDate as date, instanceIndex FROM routine_exceptions WHERE instanceDate = ? AND gguid = ?",
         [targetDateISO, gguid]
       );
+      return rows;
     } catch (e) {
       return [];
     }
