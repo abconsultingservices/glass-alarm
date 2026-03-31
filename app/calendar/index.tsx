@@ -1,5 +1,5 @@
 import React, { useState, useMemo, useEffect, useCallback, useRef } from 'react';
-import { View, Text, Pressable, Platform, FlatList, Switch, StyleSheet, Dimensions, Animated } from 'react-native';
+import { View, Text, Pressable, Platform, FlatList, Switch, StyleSheet, Dimensions, Animated, DeviceEventEmitter } from 'react-native';
 import { Calendar } from 'react-native-calendars'; 
 import { useRouter, useFocusEffect } from 'expo-router'; 
 import { Ionicons } from '@expo/vector-icons';
@@ -35,37 +35,55 @@ export default function CalendarMonthView() {
   const [systemToday, setSystemToday] = useState(getLocalTodayString());
   const [currentMonth, setCurrentMonth] = useState(systemToday);
   const [selectedDate, setSelectedDate] = useState(systemToday);
-  const [routines, setRoutines] = useState<RoutineWithSchedule[]>([]);
+  const [routines, setRoutines] = useState<any[]>([]); // Changed to any to support instanceStats
   const [exceptions, setExceptions] = useState<RoutineException[]>([]);
 
   let touchY = 0; 
 
   // --- DATA SYNC ---
+  const syncState = useCallback(async () => {
+    const freshToday = getLocalTodayString();
+    setSystemToday(freshToday);
+
+    const savedDate = await AsyncStorage.getItem('calendar_last_date');
+    const activeDate = savedDate || freshToday;
+
+    if (savedDate) {
+      setSelectedDate(activeDate);
+      setCurrentMonth(activeDate.substring(0, 7) + '-01');
+    }
+
+    const [fetchedRoutines, fetchedExceptions] = await Promise.all([
+      RoutineService.getRoutines(activeDate),
+      RoutineService.getExceptions(activeDate)
+    ]);
+
+    // --- HYDRATION: Fetch specific counts for each instance ---
+    const hydrated = await Promise.all(fetchedRoutines.map(async (r) => {
+        const occurrences = r.maxOccurrences || 1;
+        const instanceData = [];
+        
+        for (let i = 0; i < occurrences; i++) {
+            // New Service call ensuring index-specific counts
+            const counts = await (RoutineService as any).getInstanceTaskCount(r.rguid, activeDate, i);
+            instanceData.push({ index: i, ...counts });
+        }
+        
+        return { ...r, instanceStats: instanceData };
+    }));
+
+    setRoutines(hydrated);
+    setExceptions(fetchedExceptions);
+  }, [selectedDate]);
+
   useFocusEffect(
     useCallback(() => {
-      const freshToday = getLocalTodayString();
-      setSystemToday(freshToday);
-
-      const syncState = async () => {
-        const savedDate = await AsyncStorage.getItem('calendar_last_date');
-        const activeDate = savedDate || freshToday;
-
-        if (savedDate) {
-          setSelectedDate(savedDate);
-          setCurrentMonth(savedDate.substring(0, 7) + '-01');
-        }
-
-        // Fetching routines and their completion states for the active date
-        const [fetchedRoutines, fetchedExceptions] = await Promise.all([
-          RoutineService.getRoutines(activeDate),
-          RoutineService.getExceptions(activeDate)
-        ]);
-
-        setRoutines(fetchedRoutines);
-        setExceptions(fetchedExceptions);
-      };
       syncState();
-    }, [selectedDate])
+      
+      // Listen for updates from the ViewTasks screen
+      const sub = DeviceEventEmitter.addListener('ROUTINE_UPDATE_SUCCESS', syncState);
+      return () => sub.remove();
+    }, [syncState])
   );
 
   const handleDatePress = (dateString: string) => {
@@ -157,13 +175,13 @@ export default function CalendarMonthView() {
 
             const end = new Date(start.getTime() + (routine.duration || 30) * 60000);
 
-            // Calculate progress for feedback label
-            const totalTasks = routine.tasks?.length || 0;
-            const completedTasks = routine.tasks?.filter((t: any) => t.completed).length || 0;
+            // --- FETCH INDEX-SPECIFIC STATS ---
+            const stats = routine.instanceStats?.find((s: any) => s.index === i);
+            const totalTasks = stats?.total || 0;
+            const completedTasks = stats?.completed || 0;
 
             expandedList.push({ 
                 ...routine, 
-                tasks: routine.tasks ? routine.tasks.map((t: any) => ({ ...t })) : [],
                 id: `${routine.rguid}-idx-${i}`,
                 originalId: routine.rguid,
                 startTime: start, 
@@ -192,7 +210,7 @@ export default function CalendarMonthView() {
 
   return (
     <View style={{ flex: 1, backgroundColor: colors.background }}>
-      {/* --- TOP FIXED HEADER --- */}
+      {/* Header */}
       <View style={[styles.calendarHeaderRow, { paddingTop: insets.top, height: 54 + insets.top}]}>
         <Pressable onPress={() => router.push('/calendar/year')} style={({ pressed }) => [getPressedStyle(pressed), styles.headerPill]}>
           <Ionicons name="chevron-back" size={20} color={colors.text} />
@@ -214,7 +232,7 @@ export default function CalendarMonthView() {
         </View>
       </View>
 
-      {/* --- FIXED CALENDAR SECTION --- */}
+      {/* Calendar */}
       <View onTouchStart={onTouchStart} onTouchEnd={onTouchEnd}>
         {!isWeb && (
           <View style={localStyles.iosHeaderContainer}>
@@ -250,7 +268,7 @@ export default function CalendarMonthView() {
         />
       </View>
 
-      {/* --- SCROLLABLE ROUTINES SECTION --- */}
+      {/* Routine List */}
       <FlatList
         data={displayRoutines}
         keyExtractor={(item) => item.id}
@@ -314,7 +332,7 @@ export default function CalendarMonthView() {
         ListEmptyComponent={<Text style={{ color: colors.mutedText, textAlign: 'center', marginTop: 20 }}>No Routines</Text>}
       />
 
-      {/* --- FLOATING ACTION LAYER --- */}
+      {/* Floating Buttons */}
       <View style={[
         localStyles.floatingFooter, 
         { bottom: insets.bottom > 0 ? insets.bottom - 16 : 4 }

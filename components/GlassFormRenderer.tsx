@@ -9,6 +9,7 @@ import DraggableFlatList, { ScaleDecorator, RenderItemParams } from 'react-nativ
 import { BlurView } from 'expo-blur';
 import Swipeable from 'react-native-gesture-handler/Swipeable';
 import { RectButton } from 'react-native-gesture-handler';
+import * as Crypto from 'expo-crypto'; // Added for GUID generation
 
 interface Field {
     key: string;
@@ -116,6 +117,7 @@ const GlassTaskList = ({ tasks, onUpdate, styles, colors, getPressedStyle, setSc
                                         placeholder="Task description..."
                                         placeholderTextColor={colors.placeholderText}
                                         onChangeText={(text) => {
+                                            // Sync both text and title keys for DB compatibility
                                             const updated = tasks.map((t: any) => t.id === item.id ? { ...t, text, title: text } : t);
                                             onUpdate(updated);
                                         }}
@@ -143,7 +145,7 @@ const GlassTaskList = ({ tasks, onUpdate, styles, colors, getPressedStyle, setSc
                     )}
                 />
                 <Pressable
-                    onPress={() => onUpdate([...(tasks || []), { id: Date.now().toString(), text: '', title: '', completed: false }])}
+                    onPress={() => onUpdate([...(tasks || []), { id: Crypto.randomUUID(), text: '', title: '', completed: false }])}
                     style={({ pressed }) => [getPressedStyle(pressed), { flexDirection: 'row', alignItems: 'center', justifyContent: 'flex-start', padding: 16 }]}
                 >
                     <Ionicons name="add-circle" size={20} color={colors.text} style={{ opacity: 0.7 }} />
@@ -164,19 +166,18 @@ export const GlassFormRenderer = ({ schema, form, setForm, errors, setErrors }: 
 
     const inputRefs = useRef<{[key: string]: any}>({});
 
-    // Helper to handle task state updates regardless of nesting level
     const updateTaskSection = (repeaterKey: string | undefined, index: number | undefined, newTasks: any[]) => {
-        if (repeaterKey && typeof index === 'number') {
-            setForm((prev: any) => {
-                const updatedArray = JSON.parse(JSON.stringify(prev[repeaterKey] || []));
-                if (updatedArray[index]) {
-                    updatedArray[index].tasks = newTasks;
-                }
-                return { ...prev, [repeaterKey]: updatedArray };
-            });
-        } else {
-            setForm((prev: any) => ({ ...prev, tasks: newTasks }));
-        }
+        setForm((prev: any) => {
+            const nextForm = { ...prev };
+            if (repeaterKey && typeof index === 'number') {
+                const updatedArray = [...(prev[repeaterKey] || [])];
+                updatedArray[index] = { ...updatedArray[index], tasks: newTasks };
+                nextForm[repeaterKey] = updatedArray;
+            } else {
+                nextForm.tasks = newTasks;
+            }
+            return nextForm;
+        });
     };
 
     const handleUpdate = (key: string, val: any, rules: ValidationRule[] = [], overrideFilter?: RegExp, type?: string, index?: number, repeaterKey?: string) => {
@@ -437,7 +438,7 @@ export const GlassFormRenderer = ({ schema, form, setForm, errors, setErrors }: 
                                     <View key={`rep-${sIdx}-${rIdx}`} style={[styles.insetGroup, { marginBottom: 12 }]}>
                                         {section.fields.map((field, fIdx) => renderField(field, fIdx === section.fields.length - 1, section, sIdx, rIdx, section.repeaterKey))}
                                         
-                                        {/* Nested Tasks within an instance (Expansion View) */}
+                                        {/* Nested Tasks within an instance */}
                                         <GlassTaskList 
                                             tasks={item.tasks || []} 
                                             onUpdate={(newTasks: any) => updateTaskSection(section.repeaterKey, rIdx, newTasks)}
@@ -465,6 +466,7 @@ export const GlassFormRenderer = ({ schema, form, setForm, errors, setErrors }: 
                                     onPress={() => {
                                         setForm((prev: any) => {
                                             const newItem = section.fields.reduce((acc, curr) => ({ ...acc, [curr.key]: '' }), {
+                                                id: Crypto.randomUUID(), // Proper ID generation
                                                 type: 'daily',
                                                 startTime: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', hour12: false }),
                                                 startDate: new Date().toISOString().split('T')[0],

@@ -46,7 +46,6 @@ export const RoutineService = {
       const { gguid } = await RoutineService.getGuids();
       if (!gguid) return [];
 
-      // 1. Get the base routines and schedules
       const sql = `
         SELECT 
           r.rguid, r.name, r.isActive as isEnabled, r.duration,
@@ -61,21 +60,43 @@ export const RoutineService = {
 
       const rows = await db.getAllAsync(sql, [gguid, targetDateISO, targetDateISO]);
       
-      // 2. Hydrate each routine with its tasks and completion status for this specific date
-      // We do this so the Month view knows which "bubbles" to fill in.
-      const routinesWithTasks = await Promise.all(rows.map(async (row: any) => {
-        const tasks = await RoutineService.getTasksForDate(row.rguid, targetDateISO);
-        return { 
-          ...row, 
-          isEnabled: row.isEnabled === 1,
-          tasks: tasks 
-        };
-      }));
-
-      return routinesWithTasks;
+      // We return the raw rows. The "Expansion" into instances (1), (2), (3) 
+      // happens in the useMemo of your CalendarMonthView.tsx.
+      // However, to get the counts right, we need a way to fetch counts PER INDEX.
+      return rows.map((row: any) => ({ ...row, isEnabled: row.isEnabled === 1 }));
     } catch (e) {
       console.error("RoutineService.getRoutines failed:", e);
       return [];
+    }
+  },
+
+  /**
+   * NEW: A dedicated helper for the Month View's useMemo to get counts PER INSTANCE
+   */
+  getInstanceTaskCount: async (rguid: string, date: string, instanceIndex: number): Promise<{completed: number, total: number}> => {
+    try {
+      const db = await (dbService as any).getDb();
+      
+      // Get total tasks
+      const totalRow = await db.getFirstAsync(
+        `SELECT COUNT(*) as total FROM routine_tasks WHERE rguid = ?`, [rguid]
+      );
+
+      // Get completed tasks for THIS specific index
+      const completedRow = await db.getFirstAsync(`
+        SELECT COUNT(ti.tiguid) as completed
+        FROM task_instances ti
+        JOIN routine_instances ri ON ti.riguid = ri.riguid
+        WHERE ri.rguid = ? AND ri.instanceDate = ? AND ri.instanceIndex = ? AND ti.isComplete = 1`,
+        [rguid, date, instanceIndex]
+      );
+
+      return {
+        total: totalRow?.total || 0,
+        completed: completedRow?.completed || 0
+      };
+    } catch (e) {
+      return { total: 0, completed: 0 };
     }
   },
 
@@ -142,7 +163,7 @@ export const RoutineService = {
   },
 
   /**
-   * Updates task completion for a SPECIFIC DATE/INSTANCE only
+   * Updates task completion and ensures NEW tasks are added to the master template
    */
   updateTaskInstances: async (rguid: string, date: string, instanceIndex: number, tasks: any[]): Promise<boolean> => {
     try {
@@ -168,15 +189,37 @@ export const RoutineService = {
           );
         }
 
-        // 2. Clear previous task states for this instance
+        // 2. Sync Tasks to Master Template (routine_tasks)
+        // If a task was added in the UI, it must exist in routine_tasks for the JOIN to work later
+        for (let i = 0; i < tasks.length; i++) {
+          const task = tasks[i];
+          const taskId = task.id || task.rtguid;
+
+          const existsInMaster = await db.getFirstAsync(
+            `SELECT rtguid FROM routine_tasks WHERE rtguid = ?`, [taskId]
+          );
+
+          if (!existsInMaster) {
+            await db.runAsync(
+              `INSERT INTO routine_tasks (
+                rtguid, rguid, uguid, gguid, text, displayOrder, createdBy, lastModifiedBy
+              ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+              [taskId, rguid, uguid, gguid, task.title || '', i, uguid, uguid]
+            );
+          } else {
+            // Update the display order and text in case it changed
+            await db.runAsync(
+              `UPDATE routine_tasks SET text = ?, displayOrder = ?, lastModifiedBy = ? WHERE rtguid = ?`,
+              [task.title || '', i, uguid, taskId]
+            );
+          }
+        }
+
+        // 3. Clear and update the Instance completion states
         await db.runAsync(`DELETE FROM task_instances WHERE riguid = ?`, [riguid]);
 
-        // 3. Insert current tasks
         for (const task of tasks) {
-          // IMPORTANT: If this is a brand new task added via the UI, 
-          // it might not have an 'id' yet. We use its existing id or a fallback.
-          const taskId = task.id || task.rtguid || Crypto.randomUUID();
-          
+          const taskId = task.id || task.rtguid;
           await db.runAsync(
             `INSERT INTO task_instances (tiguid, riguid, rtguid, uguid, isComplete)
              VALUES (?, ?, ?, ?, ?)`,
@@ -186,10 +229,10 @@ export const RoutineService = {
       });
       return true;
     } catch (e) {
-      console.error("Failed to save task instances:", e);
+      console.error("Failed to save task instances and master tasks:", e);
       return false;
     }
-},
+  },
 
   getExceptions: async (targetDateISO: string): Promise<RoutineException[]> => {
     try {
