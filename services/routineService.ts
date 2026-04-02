@@ -287,5 +287,73 @@ export const RoutineService = {
     } catch (e) {
       return currentExceptions;
     }
+  },
+  /**
+   * Fetches all unique routines for the household (gguid)
+   * used for the Routine Management List.
+   */
+  getAllRoutines: async (): Promise<RoutineWithSchedule[]> => {
+    try {
+      const db = await (dbService as any).getDb();
+      const { gguid } = await RoutineService.getGuids();
+      if (!gguid) return [];
+
+      // We join routine_schedules to get the primary config for the list view
+      const sql = `
+        SELECT 
+          r.rguid, r.name, r.isActive as isEnabled, r.duration,
+          s.type, s.customDays, s.startTime, s.endTime,
+          (SELECT COUNT(*) FROM routine_tasks rt WHERE rt.rguid = r.rguid AND rt.isInstanceTask = 0) as taskCount
+        FROM routines r
+        LEFT JOIN routine_schedules s ON r.rguid = s.rguid
+        WHERE r.gguid = ?
+        ORDER BY r.name ASC`;
+
+      const rows = await db.getAllAsync(sql, [gguid]);
+      
+      return rows.map((row: any) => ({ 
+        ...row, 
+        isEnabled: row.isEnabled === 1 
+      }));
+    } catch (e) {
+      console.error("RoutineService.getAllRoutines failed:", e);
+      return [];
+    }
+  },
+
+  /**
+   * Hard delete of a routine template and all its associated data.
+   */
+  deleteRoutine: async (rguid: string): Promise<boolean> => {
+    try {
+      const db = await (dbService as any).getDb();
+      await db.withTransactionAsync(async () => {
+        // SQL Cascades should ideally handle this, but manual cleanup is safer for SQLite
+        await db.runAsync(`DELETE FROM routine_schedules WHERE rguid = ?`, [rguid]);
+        await db.runAsync(`DELETE FROM routine_tasks WHERE rguid = ?`, [rguid]);
+        await db.runAsync(`DELETE FROM routine_instances WHERE rguid = ?`, [rguid]);
+        await db.runAsync(`DELETE FROM routines WHERE rguid = ?`, [rguid]);
+      });
+      return true;
+    } catch (e) {
+      console.error("RoutineService.deleteRoutine failed:", e);
+      return false;
+    }
+  },
+
+  /**
+   * Quick toggle for active status from the list view
+   */
+  updateRoutineStatus: async (rguid: string, isEnabled: boolean): Promise<boolean> => {
+    try {
+      const db = await (dbService as any).getDb();
+      await db.runAsync(
+        `UPDATE routines SET isActive = ?, lastModifiedDate = CURRENT_TIMESTAMP WHERE rguid = ?`,
+        [isEnabled ? 1 : 0, rguid]
+      );
+      return true;
+    } catch (e) {
+      return false;
+    }
   }
 };

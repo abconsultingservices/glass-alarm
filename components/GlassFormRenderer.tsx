@@ -62,7 +62,7 @@ const formatDisplayValue = (rawValue: string, type: string) => {
 
 const GlassTaskList = ({ tasks, onUpdate, styles, colors, getPressedStyle, setScrollEnabled, config }: any) => {
     const showCheckmark = config?.showCheckmark !== false;
-    const enableSwipeDelete = config?.enableSwipeDelete !== false; // NEW logic check
+    const enableSwipeDelete = config?.enableSwipeDelete !== false;
     
     const renderRightActions = (
         progress: Animated.AnimatedInterpolation<number>, 
@@ -120,7 +120,10 @@ const GlassTaskList = ({ tasks, onUpdate, styles, colors, getPressedStyle, setSc
                     keyExtractor={(item) => item?.id || Crypto.randomUUID()}
                     scrollEnabled={false}
                     renderItem={({ item, drag, isActive }: RenderItemParams<any>) => {
-                        // The Row Content defined once to be used conditionally
+                        // Strict check: Only strike if showCheckmark is true, item is completed, AND text is not empty
+                        const itemText = item?.text || item?.title || '';
+                        const shouldStrike = showCheckmark && item?.completed && itemText.trim().length > 0;
+
                         const rowContent = (
                             <View style={[
                                 styles.inputRow, 
@@ -148,9 +151,9 @@ const GlassTaskList = ({ tasks, onUpdate, styles, colors, getPressedStyle, setSc
                                             minHeight: 0,
                                             overflow: 'hidden',
                                         },
-                                        (showCheckmark && item?.completed && (item?.text || item?.title)) && { textDecorationLine: 'line-through', opacity: 0.5 }
+                                        shouldStrike && { textDecorationLine: 'line-through', opacity: 0.5 }
                                     ]}
-                                    value={item?.text || item?.title || ''}
+                                    value={itemText}
                                     placeholder="Task description..."
                                     placeholderTextColor={colors.placeholderText}
                                     onChangeText={(text) => {

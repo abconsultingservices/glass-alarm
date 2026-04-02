@@ -223,10 +223,13 @@ export default function CalendarMonthView() {
             <View style={styles.pillDivider} />
             <Ionicons name="search-outline" size={22} color={colors.text} />
             <View style={styles.pillDivider} />
-            <Pressable onPress={() => router.push({
+            <Pressable 
+                onPress={() => router.push({
                     pathname: '/calendar/add-routine',
-                    params: { selectedDate: selectedDate } 
-                })} style={({ pressed }) => getPressedStyle(pressed)}>
+                    params: { startDate: selectedDate }
+                })} 
+                style={({ pressed }) => getPressedStyle(pressed)}
+                >
                 <Ionicons name="add" size={26} color={colors.text} />
             </Pressable>
         </View>
@@ -358,9 +361,9 @@ export default function CalendarMonthView() {
         </Pressable>
 
         <Pressable 
-          onPress={() => router.push('/routines')} 
-          style={({ pressed }) => [getPressedStyle(pressed), { minWidth: 130, height: 44 }]}
-        >
+            onPress={() => router.push('/calendar/routines')} 
+            style={({ pressed }) => [getPressedStyle(pressed), { minWidth: 130, height: 44 }]}
+            >
           <Animated.View style={[
             StyleSheet.absoluteFill, 
             { 

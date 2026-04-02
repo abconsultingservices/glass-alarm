@@ -173,6 +173,14 @@ export default function RootLayout() {
           <Stack.Screen name="calendar/index" />
           <Stack.Screen name="calendar/year" />
           <Stack.Screen 
+            name="calendar/routines" 
+            options={{ 
+              presentation: 'modal',
+              headerShown: false,
+              gestureEnabled: true,
+            }} 
+          />
+          <Stack.Screen 
             name="calendar/add-routine" 
             options={{ 
               presentation: 'modal',
