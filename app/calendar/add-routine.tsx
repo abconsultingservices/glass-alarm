@@ -95,7 +95,7 @@ export default function AddRoutine() {
                 fields: [] ,
                 config: {
                     showCheckmark: false, 
-                    enableSwipeDelete: true 
+                    enableSwipeDelete: false 
                 }
             }];
         }

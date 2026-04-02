@@ -62,6 +62,7 @@ const formatDisplayValue = (rawValue: string, type: string) => {
 
 const GlassTaskList = ({ tasks, onUpdate, styles, colors, getPressedStyle, setScrollEnabled, config }: any) => {
     const showCheckmark = config?.showCheckmark !== false;
+    const enableSwipeDelete = config?.enableSwipeDelete !== false; // NEW logic check
     
     const renderRightActions = (
         progress: Animated.AnimatedInterpolation<number>, 
@@ -94,7 +95,7 @@ const GlassTaskList = ({ tasks, onUpdate, styles, colors, getPressedStyle, setSc
                         alignItems: 'center',
                     }} 
                     onPress={() => {
-                        const updated = tasks.filter((t: any) => t.id !== id);
+                        const updated = (tasks || []).filter((t: any) => t?.id !== id);
                         onUpdate(updated);
                     }}
                 >
@@ -116,92 +117,117 @@ const GlassTaskList = ({ tasks, onUpdate, styles, colors, getPressedStyle, setSc
                         onUpdate(data);
                         setScrollEnabled(true);
                     }}
-                    keyExtractor={(item) => item.id}
+                    keyExtractor={(item) => item?.id || Crypto.randomUUID()}
                     scrollEnabled={false}
-                    renderItem={({ item, drag, isActive }: RenderItemParams<any>) => (
-                        <ScaleDecorator>
-                            <Swipeable 
-                                renderRightActions={(progress, dragX) => renderRightActions(progress, dragX, item.id)}
-                                friction={2}
-                                rightThreshold={40}
-                                overshootRight={false}
-                                containerStyle={{ backgroundColor: 'transparent' }}
-                            >
-                                <View style={[
-                                    styles.inputRow, 
-                                    { 
-                                        backgroundColor: isActive ? 'rgba(255,255,255,0.25)' : colors.glassBackground, 
-                                        zIndex: isActive ? 999 : 1,
-                                        flexDirection: 'row',
-                                        alignItems: 'center',
-                                        minHeight: 54,
-                                        width: SCREEN_WIDTH - 32,
-                                    }
-                                ] as any}>
-                                    <Pressable onLongPress={drag} delayLongPress={150} style={{ paddingLeft: 16 }}>
-                                        <Ionicons name="reorder-three" size={24} color={colors.mutedText} style={{ opacity: 0.5 }} />
+                    renderItem={({ item, drag, isActive }: RenderItemParams<any>) => {
+                        // The Row Content defined once to be used conditionally
+                        const rowContent = (
+                            <View style={[
+                                styles.inputRow, 
+                                { 
+                                    backgroundColor: isActive ? 'rgba(255,255,255,0.25)' : colors.glassBackground, 
+                                    zIndex: isActive ? 999 : 1,
+                                    flexDirection: 'row',
+                                    alignItems: 'center',
+                                    minHeight: 54,
+                                    width: SCREEN_WIDTH - 32,
+                                }
+                            ] as any}>
+                                <Pressable onLongPress={drag} delayLongPress={150} style={{ paddingLeft: 16 }}>
+                                    <Ionicons name="reorder-three" size={24} color={colors.mutedText} style={{ opacity: 0.5 }} />
+                                </Pressable>
+                                
+                                <TextInput
+                                    style={[
+                                        styles.inputField, 
+                                        { 
+                                            flex: 1, 
+                                            paddingLeft: 12, 
+                                            color: colors.text,
+                                            textAlign: 'left',
+                                            minHeight: 0,
+                                            overflow: 'hidden',
+                                        },
+                                        (showCheckmark && item?.completed && (item?.text || item?.title)) && { textDecorationLine: 'line-through', opacity: 0.5 }
+                                    ]}
+                                    value={item?.text || item?.title || ''}
+                                    placeholder="Task description..."
+                                    placeholderTextColor={colors.placeholderText}
+                                    onChangeText={(text) => {
+                                        const updated = tasks.map((t: any) => t?.id === item?.id ? { ...t, text, title: text } : t);
+                                        onUpdate(updated);
+                                    }}
+                                />
+
+                                {showCheckmark ? (
+                                    <Pressable 
+                                        onPress={() => {
+                                            const updated = tasks.map((t: any) => 
+                                                t?.id === item?.id ? { ...t, completed: !t?.completed } : t
+                                            );
+                                            onUpdate(updated);
+                                        }} 
+                                        style={({ pressed }) => [getPressedStyle(pressed), { paddingHorizontal: 16 }]}
+                                    >
+                                        <Ionicons 
+                                            name={item?.completed ? "checkmark-circle" : "ellipse-outline"} 
+                                            size={24} 
+                                            color={item?.completed ? colors.success : colors.mutedText} 
+                                        />
                                     </Pressable>
-                                    
-                                    <TextInput
-                                        style={[
-                                            styles.inputField, 
-                                            { 
-                                                flex: 1, 
-                                                paddingLeft: 12, 
-                                                color: colors.text,
-                                                textAlign: 'left',
-                                                // FIXED: InteractionManager-related simulator noise fix
-                                                minHeight: 0,
-                                                overflow: 'hidden',
-                                            },
-                                            (showCheckmark && item.completed && (item.text || item.title)) && { textDecorationLine: 'line-through', opacity: 0.5 }
-                                        ]}
-                                        value={item.text || item.title || ''}
-                                        placeholder="Task description..."
-                                        placeholderTextColor={colors.placeholderText}
-                                        onChangeText={(text) => {
-                                            const updated = tasks.map((t: any) => t.id === item.id ? { ...t, text, title: text } : t);
+                                ) : (
+                                    <Pressable 
+                                        onPress={() => {
+                                            const updated = (tasks || []).filter((t: any) => t?.id !== item?.id);
                                             onUpdate(updated);
                                         }}
-                                    />
-
-                                    {showCheckmark ? (
-                                        <Pressable 
-                                            onPress={() => {
-                                                const updated = tasks.map((t: any) => 
-                                                    t.id === item.id ? { ...t, completed: !t.completed } : t
-                                                );
-                                                onUpdate(updated);
-                                            }} 
-                                            style={({ pressed }) => [getPressedStyle(pressed), { paddingHorizontal: 16 }]}
-                                        >
-                                            <Ionicons 
-                                                name={item.completed ? "checkmark-circle" : "ellipse-outline"} 
-                                                size={24} 
-                                                color={item.completed ? colors.success : colors.mutedText} 
-                                            />
-                                        </Pressable>
-                                    ) : (
-                                        <Pressable 
-                                            onPress={() => {
-                                                const updated = tasks.filter((t: any) => t.id !== item.id);
-                                                onUpdate(updated);
-                                            }}
-                                            style={({ pressed }) => [styles.circularButton, getPressedStyle(pressed), { marginHorizontal: 16 }]}
-                                        >
+                                        style={({ pressed }) => [
+                                            getPressedStyle(pressed), 
+                                            { 
+                                                paddingHorizontal: 16,
+                                                justifyContent: 'center',
+                                                alignItems: 'center'
+                                            }
+                                        ]}
+                                    >
+                                        <View style={{
+                                            width: 38,
+                                            height: 38,
+                                            borderRadius: 19,
+                                            backgroundColor: colors.error,
+                                            justifyContent: 'center',
+                                            alignItems: 'center'
+                                        }}>
                                             <Ionicons 
                                                 name="trash-outline" 
-                                                size={22} 
-                                                color={colors.error} 
-                                                style={{ opacity: 0.8 }}
+                                                size={20} 
+                                                color="#FFFFFF"
                                             />
-                                        </Pressable>
-                                    )}
-                                </View>
-                            </Swipeable>
-                            <View style={styles.divider} />
-                        </ScaleDecorator>
-                    )}
+                                        </View>
+                                    </Pressable>
+                                )}
+                            </View>
+                        );
+
+                        return (
+                            <ScaleDecorator>
+                                {enableSwipeDelete ? (
+                                    <Swipeable 
+                                        renderRightActions={(progress, dragX) => renderRightActions(progress, dragX, item.id)}
+                                        friction={2}
+                                        rightThreshold={40}
+                                        overshootRight={false}
+                                        containerStyle={{ backgroundColor: 'transparent' }}
+                                    >
+                                        {rowContent}
+                                    </Swipeable>
+                                ) : (
+                                    rowContent
+                                )}
+                                <View style={styles.divider} />
+                            </ScaleDecorator>
+                        );
+                    }}
                 />
                 <Pressable
                     onPress={() => onUpdate([...(tasks || []), { id: Crypto.randomUUID(), text: '', title: '', completed: false }])}
@@ -518,13 +544,19 @@ export const GlassFormRenderer = ({ schema, form, setForm, errors, setErrors }: 
                                                     return { ...prev, [section.repeaterKey!]: updated };
                                                 });
                                             }}
-                                            style={({ pressed }) => [getPressedStyle(pressed), { padding: 12, alignItems: 'center', borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: colors.glassBorder }]}
+                                            style={({ pressed }) => [getPressedStyle(pressed), { padding: 12, alignItems: 'center' }]}
                                         >
-                                            {/* FIXED: Circle button with destructive style applied to text */}
-                                            <View style={[styles.inputContainer, { borderRadius: 30, paddingHorizontal: 20, marginHorizontal: '10%' }]}>
-                                              <Text style={[styles.pillButtonDestructive, { color: colors.error, fontSize: 16, fontWeight: '600', paddingVertical: 12 }]}>
-                                                Remove {section.label?.replace(/s$/i, '') || 'Block'}
-                                              </Text>
+                                            <View style={{
+                                                backgroundColor: 'rgba(255, 59, 48, 0.15)',
+                                                borderRadius: 25,
+                                                paddingHorizontal: 24,
+                                                paddingVertical: 10,
+                                                borderWidth: 1,
+                                                borderColor: 'rgba(255, 59, 48, 0.25)'
+                                            }}>
+                                                <Text style={{ color: '#FF3B30', fontSize: 16, fontWeight: '600' }}>
+                                                    Remove {section.label?.replace(/s$/i, '') || 'Block'}
+                                                </Text>
                                             </View>
                                         </Pressable>
                                     </View>
