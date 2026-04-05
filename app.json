@@ -1,22 +1,29 @@
 {
   "expo": {
-    "name": "liquid-glass-drizzle",
-    "slug": "liquid-glass-drizzle",
+    "name": "Routine Driven",
+    "slug": "routine-driven",
     "version": "1.0.0",
     "orientation": "portrait",
     "icon": "./assets/icon.png",
     "userInterfaceStyle": "automatic",
+    "extra": {
+      "domain": "routinedriven.com"
+    },
     "splash": {
       "image": "./assets/splash-icon.png",
       "resizeMode": "contain",
-      "backgroundColor": "#ffffff"
+      "backgroundColor": "#000000"
     },
     "scheme": "liquid-glass",
     "ios": {
       "deploymentTarget": "26.0",
       "userInterfaceStyle": "automatic",
       "supportsTablet": true,
-      "bundleIdentifier": "com.anonymous.liquid-glass-drizzle",
+      "bundleIdentifier": "com.routinedriven.app",
+      "associatedDomains": [
+        "applinks:routinedriven.com",
+        "applinks:www.routinedriven.com"
+      ],
       "infoPlist": {
         "NSAlarmKitUsageDescription": "We need access to set your alarms."
       },

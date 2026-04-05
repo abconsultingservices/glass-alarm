@@ -1,8 +1,9 @@
 import React, { useState, useRef, useMemo, useEffect } from 'react';
-import { View, Text, Pressable, Animated, ScrollView, Platform, DeviceEventEmitter } from 'react-native';
+import { View, Text, Pressable, Animated, ScrollView, Platform, DeviceEventEmitter, ActivityIndicator } from 'react-native';
 import { useRouter, useLocalSearchParams } from 'expo-router'; 
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { dbService } from '../../services/DatabaseService';
+import { RoutineService } from '../../services/routineService'; // Added
 import { useThemedStyles } from '../../hooks/useThemedStyles';
 import { GlassFormRenderer } from '../../components/GlassFormRenderer';
 import { getInitialFormState, getInitialErrorState, validateForm } from '../../utils/ValidationEngine';
@@ -11,11 +12,71 @@ import { Ionicons } from '@expo/vector-icons';
 
 export default function AddRoutine() {
     const router = useRouter();
-    const params = useLocalSearchParams(); // Catch the incoming context date
+    const params = useLocalSearchParams(); 
     const insets = useSafeAreaInsets();
     const { styles, colors, getPressedStyle } = useThemedStyles(); 
 
-    // --- DYNAMIC SCHEMA GENERATION ---
+    const rguid = params.rguid as string; // Check if we are editing
+    const isEditMode = !!rguid;
+
+    const [loading, setLoading] = useState(isEditMode);
+    const [form, setForm] = useState(() => {
+        const initial = getInitialFormState([]); // Placeholder
+        const contextDate = (params.selectedDate && typeof params.selectedDate === 'string') 
+            ? params.selectedDate 
+            : new Date().toISOString().split('T')[0];
+
+        return { 
+            name: '',
+            duration: '30',
+            isEnabled: true,
+            schedules: [{
+                type: 'daily',
+                startDate: contextDate,
+                startTime: '08:00',
+                customDays: '[]',
+                frequencyHours: '',
+                maxOccurrences: '1'
+            }],
+            tasks: [] 
+        };
+    });
+
+    // --- LOAD DATA FOR EDIT MODE ---
+    useEffect(() => {
+        if (isEditMode) {
+            const loadData = async () => {
+                // We pass a dummy date just to get the master template structure
+                const today = new Date().toISOString().split('T')[0];
+                const existing = await RoutineService.getRoutineById(rguid, today, 0);
+                
+                if (existing) {
+                    // Fetch the schedule specifically for the master
+                    const all = await RoutineService.getAllRoutines();
+                    const masterSched = all.find(r => r.rguid === rguid);
+
+                    setForm({
+                        name: existing.name,
+                        duration: String(existing.duration),
+                        isEnabled: existing.isEnabled,
+                        schedules: [{
+                            type: masterSched?.type || 'daily',
+                            startDate: masterSched?.startDate || today,
+                            startTime: masterSched?.startTime || '08:00',
+                            customDays: masterSched?.customDays || '[]',
+                            frequencyHours: String(masterSched?.frequencyHours || ''),
+                            maxOccurrences: String(masterSched?.maxOccurrences || '1')
+                        }],
+                        tasks: existing.tasks || []
+                    });
+                }
+                setLoading(false);
+            };
+            loadData();
+        }
+    }, [rguid]);
+
+    // --- SCHEMA ---
     const schema = useMemo(() => [
         {
             sectionType: 'insetGroup' as const,
@@ -40,51 +101,9 @@ export default function AddRoutine() {
         }
     ], []);
 
-    const [form, setForm] = useState(() => {
-        const initial = getInitialFormState(schema);
-        
-        // Determine context-aware start date from calendar selection
-        const contextDate = (params.selectedDate && typeof params.selectedDate === 'string') 
-            ? params.selectedDate 
-            : new Date().toISOString().split('T')[0];
-
-        return { 
-            ...initial,
-            name: '',
-            duration: '30',
-            schedules: [{
-                type: 'daily',
-                startDate: contextDate,
-                startTime: '08:00',
-                customDays: '[]',
-                frequencyHours: '',
-                maxOccurrences: '1'
-            }],
-            tasks: [] 
-        };
-    });
-
     const [errors, setErrors] = useState(() => getInitialErrorState(schema));
     const [activeTab, setActiveTab] = useState('Routine'); 
     const shakeAnim = useRef(new Animated.Value(0)).current;
-
-    useEffect(() => {
-        const subscription = DeviceEventEmitter.addListener('FORM_FIELD_UPDATE', (data) => {
-            const { key, value, index, repeaterKey } = data;
-            setForm((prev: any) => {
-                const newForm = JSON.parse(JSON.stringify(prev));
-                if (repeaterKey && typeof index === 'number') {
-                    if (newForm[repeaterKey] && newForm[repeaterKey][index]) {
-                        newForm[repeaterKey][index][key] = value;
-                    }
-                } else {
-                    newForm[key] = value;
-                }
-                return newForm;
-            });
-        });
-        return () => subscription.remove();
-    }, []);
 
     const activeSchema = useMemo(() => {
         if (activeTab === 'Tasks') {
@@ -93,13 +112,9 @@ export default function AddRoutine() {
                 label: 'ROUTINE TASKS',
                 footer: 'Add steps to your routine. Long-press the handle to reorder.',
                 fields: [] ,
-                config: {
-                    showCheckmark: false, 
-                    enableSwipeDelete: false 
-                }
+                config: { showCheckmark: false, enableSwipeDelete: true }
             }];
         }
-
         const base = JSON.parse(JSON.stringify(schema));
         const scheduleSection = base.find((s: any) => s.repeaterKey === 'schedules');
         if (scheduleSection) {
@@ -110,42 +125,54 @@ export default function AddRoutine() {
         return base;
     }, [activeTab, schema]);
 
-    // Simple error check for UI button state
     const hasErrors = useMemo(() => {
         return Object.values(errors).some(e => !!e) || !form?.name?.trim();
     }, [errors, form]);
 
-    const triggerShake = () => {
-        Animated.sequence([
-            Animated.timing(shakeAnim, { toValue: 10, duration: 45, useNativeDriver: true }),
-            Animated.timing(shakeAnim, { toValue: -10, duration: 45, useNativeDriver: true }),
-            Animated.timing(shakeAnim, { toValue: 0, duration: 45, useNativeDriver: true }),
-        ]).start();
-    };
-
     const handleSave = async () => {
-        // 1. Unified deep validation check
         const newErrors = validateForm(form, activeSchema);
-
         if (Object.keys(newErrors).length > 0) {
             setErrors(newErrors);
             setActiveTab('Routine');
-            triggerShake();
+            Animated.sequence([
+                Animated.timing(shakeAnim, { toValue: 10, duration: 45, useNativeDriver: true }),
+                Animated.timing(shakeAnim, { toValue: -10, duration: 45, useNativeDriver: true }),
+                Animated.timing(shakeAnim, { toValue: 0, duration: 45, useNativeDriver: true }),
+            ]).start();
             return;
         }
 
-        // 2. Execute DB save
-        const success = await dbService.createRoutine(
-            form.name, 
-            parseInt(form.duration) || 0, 
-            form.schedules, 
-            form.tasks
-        );
+        let success = false;
+        if (isEditMode) {
+            success = await RoutineService.updateRoutine( // Use RoutineService here
+                rguid,
+                form.name,
+                parseInt(form.duration) || 0,
+                form.schedules,
+                form.tasks
+            );
+        } else {
+            success = await dbService.createRoutine(
+                form.name, 
+                parseInt(form.duration) || 0, 
+                form.schedules, 
+                form.tasks
+            );
+        }
 
         if (success) {
+            DeviceEventEmitter.emit('ROUTINE_UPDATE_SUCCESS');
             router.back();
         }
     };
+
+    if (loading) {
+        return (
+            <View style={[styles.modalContainer, { justifyContent: 'center' }]}>
+                <ActivityIndicator size="large" color={colors.text} />
+            </View>
+        );
+    }
 
     return (
         <View style={styles.modalContainer}>
@@ -156,17 +183,16 @@ export default function AddRoutine() {
                     <Ionicons name="close" size={24} color={colors.text} />
                 </Pressable>
                 
-                <Text style={styles.modalTitle}>New Routine</Text>
+                <Text style={styles.modalTitle}>{isEditMode ? 'Edit Routine' : 'New Routine'}</Text>
 
                 <Pressable 
                     onPress={handleSave} 
                     style={({ pressed }) => [
                         styles.circularButton, 
-                        getPressedStyle(pressed),
-                        hasErrors && { backgroundColor: 'rgba(255, 69, 58, 0.15)', borderColor: colors.error }
+                        getPressedStyle(pressed)
                     ]}
                 >
-                    <Ionicons name="checkmark" size={24} color={hasErrors ? colors.error : colors.text} />
+                    <Ionicons name="checkmark" size={24} color={hasErrors ? colors.mutedText : colors.text} />
                 </Pressable>
             </View>
 

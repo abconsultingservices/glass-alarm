@@ -1,15 +1,15 @@
 import React, { useState, useCallback } from 'react';
-import { View, Text, FlatList, Pressable, Switch, StyleSheet, Platform, ActivityIndicator } from 'react-native';
+import { View, Text, FlatList, Pressable, Switch, StyleSheet, Platform, ActivityIndicator, DeviceEventEmitter } from 'react-native';
 import { useRouter, useFocusEffect } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { useThemedStyles } from '../../hooks/useThemedStyles';
 import { RoutineService, RoutineWithSchedule } from '../../services/routineService';
-import { useSafeAreaInsets } from 'react-native-safe-area-context'; // Added this
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 export default function RoutineListScreen() {
   const { styles, colors, getPressedStyle } = useThemedStyles();
   const router = useRouter();
-  const insets = useSafeAreaInsets(); // Initialize insets
+  const insets = useSafeAreaInsets();
   
   const [routines, setRoutines] = useState<RoutineWithSchedule[]>([]);
   const [loading, setLoading] = useState(true);
@@ -28,15 +28,27 @@ export default function RoutineListScreen() {
   };
 
   const handleToggleActive = async (rguid: string, currentStatus: boolean) => {
+    // 1. Optimistic UI update
     setRoutines(prev => prev.map(r => 
       r.rguid === rguid ? { ...r, isEnabled: !currentStatus } : r
     ));
+
+    // 2. DB Update
     await RoutineService.updateRoutineStatus(rguid, !currentStatus);
+
+    // 3. BROADCAST: Tell the Calendar to refresh so these routines disappear/reappear
+    DeviceEventEmitter.emit('ROUTINE_UPDATE_SUCCESS');
   };
 
   const renderRoutineCard = ({ item }: { item: RoutineWithSchedule }) => (
     <Pressable 
-      onPress={() => router.push(`/calendar/add-routine?rguid=${item.rguid}`)}
+      onPress={() => {
+        // Navigating with the rguid parameter
+        router.push({
+            pathname: '/calendar/add-routine',
+            params: { rguid: item.rguid }
+        });
+      }}
       style={({ pressed }) => [
         styles.insetGroup, 
         { marginBottom: 16, padding: 16 },
@@ -134,7 +146,7 @@ const localStyles = StyleSheet.create({
     fontWeight: '700',
     color: '#FFF',
     textAlign: 'center',
-    flex: 1, // Added to help center text between buttons
+    flex: 1,
   },
   subTitle: {
     fontSize: 14,

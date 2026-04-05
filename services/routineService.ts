@@ -355,5 +355,81 @@ export const RoutineService = {
     } catch (e) {
       return false;
     }
+  },
+  /**
+   * Updates the master routine template, its schedules, and its master tasks.
+   * This uses a "Clear and Rewrite" strategy for sub-tables to ensure template integrity.
+   */
+  updateRoutine: async (
+    rguid: string, 
+    name: string, 
+    duration: number, 
+    schedules: any[], 
+    tasks: any[]
+  ): Promise<boolean> => {
+    try {
+      const db = await (dbService as any).getDb();
+      const { uguid, gguid } = await RoutineService.getGuids();
+      
+      if (!uguid || !gguid) {
+        console.error("RoutineService: Missing session GUIDs for update");
+        return false;
+      }
+
+      await db.withTransactionAsync(async () => {
+        // 1. Update core Routine record
+        await db.runAsync(
+          `UPDATE routines 
+           SET name = ?, duration = ?, lastModifiedBy = ?, lastModifiedDate = CURRENT_TIMESTAMP 
+           WHERE rguid = ?`,
+          [name, duration, uguid, rguid]
+        );
+
+        // 2. Refresh Schedules: Delete old and insert new
+        // Note: rsguid is the column name used in your schema for schedule unique IDs
+        await db.runAsync(`DELETE FROM routine_schedules WHERE rguid = ?`, [rguid]);
+        
+        for (const s of schedules) {
+          const sguid = Crypto.randomUUID();
+          const freq = s.frequencyHours ? parseInt(s.frequencyHours.toString()) : null;
+          const maxOcc = s.maxOccurrences ? parseInt(s.maxOccurrences.toString()) : 1;
+
+          await db.runAsync(
+            `INSERT INTO routine_schedules (
+                sguid, rguid, uguid, gguid, type, 
+                customDays, startDate, startTime, endDate,
+                frequencyHours, maxOccurrences, 
+                createdBy, lastModifiedBy
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+            [
+              sguid, rguid, uguid, gguid, s.type, 
+              s.customDays || null, s.startDate, s.startTime, 
+              s.endDate || null, freq, maxOcc, uguid, uguid
+            ]
+          );
+        }
+
+        // 3. Refresh Master Tasks: Delete old and insert new (isInstanceTask = 0)
+        await db.runAsync(`DELETE FROM routine_tasks WHERE rguid = ? AND isInstanceTask = 0`, [rguid]);
+        
+        for (let i = 0; i < tasks.length; i++) {
+          const t = tasks[i];
+          const taskText = t.title || t.text || '';
+          if (!taskText.trim()) continue;
+
+          await db.runAsync(
+            `INSERT INTO routine_tasks (rtguid, rguid, uguid, gguid, text, displayOrder, isInstanceTask, createdBy, lastModifiedBy) 
+             VALUES (?, ?, ?, ?, ?, ?, 0, ?, ?)`,
+            [Crypto.randomUUID(), rguid, uguid, gguid, taskText, i, uguid, uguid]
+          );
+        }
+      });
+
+      console.log(`RoutineService: Updated "${name}" template successfully.`);
+      return true;
+    } catch (e) {
+      console.error("RoutineService.updateRoutine failed:", e);
+      return false;
+    }
   }
 };
