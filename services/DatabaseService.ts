@@ -147,6 +147,16 @@ class DatabaseService {
         }
     }
 
+    // --- ADDED FOR SETTINGS CONSISTENCY ---
+    async getLatestGroup() {
+        try {
+            const sqlite = await this.getDb();
+            return await sqlite.getFirstAsync<any>('SELECT * FROM groups ORDER BY id DESC LIMIT 1');
+        } catch (error) {
+            return null;
+        }
+    }
+
     async updateField(tableName: string, columnName: string, value: any, guidLabel: string, guidValue: string) {
         try {
             const sqlite = await this.getDb();
@@ -164,7 +174,6 @@ class DatabaseService {
         }
     }
 
-    // UPDATED: Now handles Array of schedules and Array of tasks
     async createRoutine(
         name: string, 
         duration: number, 
@@ -192,14 +201,12 @@ class DatabaseService {
             const sqlite = await this.getDb();
             
             await sqlite.withTransactionAsync(async () => {
-                // 1. Insert Routine
                 await sqlite.runAsync(
                     `INSERT INTO routines (rguid, uguid, gguid, name, duration, createdBy, lastModifiedBy) 
                     VALUES (?, ?, ?, ?, ?, ?, ?)`,
                     [rguid, uguid, gguid, name, duration, uguid, uguid]
                 );
 
-                // 2. Insert Schedules
                 for (const schedule of schedules) {
                     const sguid = Crypto.randomUUID();
                     const freq = schedule.frequencyHours ? parseInt(schedule.frequencyHours.toString()) : null;
@@ -220,7 +227,6 @@ class DatabaseService {
                     );
                 }
 
-                // 3. Insert Tasks
                 for (let i = 0; i < tasks.length; i++) {
                     if (!tasks[i].text.trim()) continue;
                     
@@ -241,8 +247,8 @@ class DatabaseService {
     }
 
     async updateSetupData(firstName: string, lastName: string, email: string, groupName: string) {
-        let uguid = await AsyncStorage.getItem('temp_setup_uguid');
-        let gguid = await AsyncStorage.getItem('temp_setup_gguid');
+        let uguid = await AsyncStorage.getItem('session_uguid');
+        let gguid = await AsyncStorage.getItem('session_gguid');
 
         if (!uguid || !gguid) {
             await this.recoverSetupGuids();
@@ -256,17 +262,17 @@ class DatabaseService {
             const sqlite = await this.getDb();
             await sqlite.withTransactionAsync(async () => {
                 await sqlite.runAsync(
-                    'UPDATE users SET firstName = ?, lastName = ?, email = ? WHERE uguid = ?',
+                    'UPDATE users SET firstName = ?, lastName = ?, email = ?, lastModifiedDate = CURRENT_TIMESTAMP WHERE uguid = ?',
                     [firstName, lastName, email, uguid]
                 );
                 await sqlite.runAsync(
-                    'UPDATE groups SET name = ? WHERE gguid = ?',
+                    'UPDATE groups SET name = ?, lastModifiedDate = CURRENT_TIMESTAMP WHERE gguid = ?',
                     [groupName, gguid]
                 );
             });
 
-            await AsyncStorage.setItem('session_uguid', uguid);
-            await AsyncStorage.setItem('session_gguid', gguid);
+            await AsyncStorage.setItem('session_uguid', uguid!);
+            await AsyncStorage.setItem('session_gguid', gguid!);
             return true;
         } catch (e) {
             return false;

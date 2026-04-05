@@ -168,7 +168,7 @@ export default function CalendarYearView() {
       }}>
         <View style={[styles.calendarHeaderRow, localStyles.floatingHeader, { marginTop: insets.top + 10 }]}>
           <View style={styles.headerPill}>
-              <Pressable onPress={() => router.replace('/settings')} style={({ pressed }) => getPressedStyle(pressed)}>
+              <Pressable onPress={() => router.push('/settings')} style={({ pressed }) => getPressedStyle(pressed)}>
                 <Ionicons name="settings-outline" size={22} color={colors.text} />
               </Pressable>
               <View style={styles.pillDivider} />
