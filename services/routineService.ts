@@ -41,6 +41,7 @@ export const RoutineService = {
       const { gguid } = await RoutineService.getGuids();
       if (!gguid) return [];
 
+      // REMOVED "AND r.isActive = 1" to allow disabled routines to show as 'ghosts'
       const sql = `
         SELECT 
           r.rguid, r.name, r.isActive as isEnabled, r.duration,
@@ -48,8 +49,7 @@ export const RoutineService = {
           s.endDate, s.endTime, s.frequencyHours, s.maxOccurrences
         FROM routines r
         JOIN routine_schedules s ON r.rguid = s.rguid
-        WHERE r.isActive = 1
-          AND r.gguid = ?
+        WHERE r.gguid = ?
           AND s.startDate <= ? 
           AND (s.endDate IS NULL OR s.endDate >= ?)`;
 
@@ -87,53 +87,66 @@ export const RoutineService = {
   },
 
   getRoutineById: async (rguid: string, date: string, instanceIndex: number = 0): Promise<any | null> => {
-        try {
-            const db = await (dbService as any).getDb();
-            const routine = await db.getFirstAsync(
-                `SELECT rguid, name, duration, isActive FROM routines WHERE rguid = ?`, 
-                [rguid]
-            );
-            if (!routine) return null;
+    try {
+        const db = await (dbService as any).getDb();
+        
+        // JOIN with routine_schedules to get template defaults for the Edit screen
+        const routine = await db.getFirstAsync(
+            `SELECT 
+                r.rguid, r.name, r.duration, r.isActive,
+                s.type, s.startDate, s.startTime, s.endDate, s.customDays,
+                s.frequencyHours, s.maxOccurrences
+             FROM routines r
+             LEFT JOIN routine_schedules s ON r.rguid = s.rguid
+             WHERE r.rguid = ?`, 
+            [rguid]
+        );
 
-            const divergedTasks = await db.getAllAsync(`
-                SELECT 
-                    ti.rtguid as id, 
-                    ti.text as title, 
-                    ti.displayOrder, 
-                    ti.isComplete as completed
-                FROM task_instances ti
-                JOIN routine_instances ri ON ti.riguid = ri.riguid
-                WHERE ri.rguid = ? AND ri.instanceDate = ? AND ri.instanceIndex = ?
-                ORDER BY ti.displayOrder ASC`, 
-                [rguid, date, instanceIndex]
-            );
+        if (!routine) return null;
 
-            if (divergedTasks.length > 0) {
-                return {
-                    ...routine,
-                    isEnabled: routine.isActive === 1,
-                    tasks: divergedTasks.map((t: any) => ({ ...t, completed: !!t.completed }))
-                };
-            }
+        const divergedTasks = await db.getAllAsync(`
+            SELECT 
+                ti.rtguid as id, 
+                ti.text as title, 
+                ti.displayOrder, 
+                ti.isComplete as completed
+            FROM task_instances ti
+            JOIN routine_instances ri ON ti.riguid = ri.riguid
+            WHERE ri.rguid = ? AND ri.instanceDate = ? AND ri.instanceIndex = ?
+            ORDER BY ti.displayOrder ASC`, 
+            [rguid, date, instanceIndex]
+        );
 
-            const masterTasks = await db.getAllAsync(
+        const tasks = divergedTasks.length > 0 
+            ? divergedTasks.map((t: any) => ({ ...t, completed: !!t.completed }))
+            : await db.getAllAsync(
                 `SELECT rtguid as id, text as title, displayOrder, 0 as completed 
-                FROM routine_tasks 
-                WHERE rguid = ? AND isInstanceTask = 0
-                ORDER BY displayOrder ASC`,
+                 FROM routine_tasks 
+                 WHERE rguid = ? AND isInstanceTask = 0
+                 ORDER BY displayOrder ASC`,
                 [rguid]
             );
 
-            return {
-                ...routine,
-                isEnabled: routine.isActive === 1,
-                tasks: masterTasks
-            };
-        } catch (e) {
-            console.error("getRoutineById failed:", e);
-            return null;
-        }
-    },
+        return {
+            ...routine,
+            isEnabled: routine.isActive === 1,
+            // Map schedule fields into the array format the GlassForm expects
+            schedules: [{
+                type: routine.type || 'daily',
+                startDate: routine.startDate,
+                startTime: routine.startTime,
+                endDate: routine.endDate,
+                customDays: routine.customDays || '[]',
+                frequencyHours: routine.frequencyHours ? String(routine.frequencyHours) : '',
+                maxOccurrences: routine.maxOccurrences ? String(routine.maxOccurrences) : '1'
+            }],
+            tasks
+        };
+    } catch (e) {
+        console.error("getRoutineById failed:", e);
+        return null;
+    }
+  },
 
   updateTaskInstances: async (
         rguid: string, 
@@ -148,7 +161,6 @@ export const RoutineService = {
             if (!uguid || !gguid) return false;
 
             await db.withTransactionAsync(async () => {
-                // --- STEP 1: Handle Master Template ---
                 if (scope === 'future') {
                     await db.runAsync(`DELETE FROM routine_tasks WHERE rguid = ?`, [rguid]);
                     for (let i = 0; i < tasks.length; i++) {
@@ -172,7 +184,6 @@ export const RoutineService = {
                     }
                 }
 
-                // --- STEP 2: Identify Targets (Renamed alias to 'idx' to avoid SQL keywords) ---
                 let targets: { date: string, idx: number }[] = [];
                 if (scope === 'instance') {
                     targets = [{ date, idx: instanceIndex }];
@@ -191,7 +202,6 @@ export const RoutineService = {
                     targets = rows.length > 0 ? rows : [{ date, idx: instanceIndex }];
                 }
 
-                // --- STEP 3: Snapshot Save with Selective Propagation ---
                 for (const target of targets) {
                     const isCurrentInstance = (target.date === date && target.idx === instanceIndex);
 
@@ -288,17 +298,13 @@ export const RoutineService = {
       return currentExceptions;
     }
   },
-  /**
-   * Fetches all unique routines for the household (gguid)
-   * used for the Routine Management List.
-   */
+
   getAllRoutines: async (): Promise<RoutineWithSchedule[]> => {
     try {
       const db = await (dbService as any).getDb();
       const { gguid } = await RoutineService.getGuids();
       if (!gguid) return [];
 
-      // We join routine_schedules to get the primary config for the list view
       const sql = `
         SELECT 
           r.rguid, r.name, r.isActive as isEnabled, r.duration,
@@ -321,14 +327,10 @@ export const RoutineService = {
     }
   },
 
-  /**
-   * Hard delete of a routine template and all its associated data.
-   */
   deleteRoutine: async (rguid: string): Promise<boolean> => {
     try {
       const db = await (dbService as any).getDb();
       await db.withTransactionAsync(async () => {
-        // SQL Cascades should ideally handle this, but manual cleanup is safer for SQLite
         await db.runAsync(`DELETE FROM routine_schedules WHERE rguid = ?`, [rguid]);
         await db.runAsync(`DELETE FROM routine_tasks WHERE rguid = ?`, [rguid]);
         await db.runAsync(`DELETE FROM routine_instances WHERE rguid = ?`, [rguid]);
@@ -341,9 +343,6 @@ export const RoutineService = {
     }
   },
 
-  /**
-   * Quick toggle for active status from the list view
-   */
   updateRoutineStatus: async (rguid: string, isEnabled: boolean): Promise<boolean> => {
     try {
       const db = await (dbService as any).getDb();
@@ -356,10 +355,7 @@ export const RoutineService = {
       return false;
     }
   },
-  /**
-   * Updates the master routine template, its schedules, and its master tasks.
-   * This uses a "Clear and Rewrite" strategy for sub-tables to ensure template integrity.
-   */
+
   updateRoutine: async (
     rguid: string, 
     name: string, 
@@ -377,7 +373,6 @@ export const RoutineService = {
       }
 
       await db.withTransactionAsync(async () => {
-        // 1. Update core Routine record
         await db.runAsync(
           `UPDATE routines 
            SET name = ?, duration = ?, lastModifiedBy = ?, lastModifiedDate = CURRENT_TIMESTAMP 
@@ -385,8 +380,6 @@ export const RoutineService = {
           [name, duration, uguid, rguid]
         );
 
-        // 2. Refresh Schedules: Delete old and insert new
-        // Note: rsguid is the column name used in your schema for schedule unique IDs
         await db.runAsync(`DELETE FROM routine_schedules WHERE rguid = ?`, [rguid]);
         
         for (const s of schedules) {
@@ -409,7 +402,6 @@ export const RoutineService = {
           );
         }
 
-        // 3. Refresh Master Tasks: Delete old and insert new (isInstanceTask = 0)
         await db.runAsync(`DELETE FROM routine_tasks WHERE rguid = ? AND isInstanceTask = 0`, [rguid]);
         
         for (let i = 0; i < tasks.length; i++) {

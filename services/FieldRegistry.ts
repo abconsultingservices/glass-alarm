@@ -15,20 +15,23 @@ export const fieldRegistry: Record<string, Record<string, RegistryField>> = {
     users: {
         firstName: {
             label: 'First Name',
+            type: 'text',
             dbColumn: 'firstName',
             validation: [{ type: 'required', errorMsg: 'First name is required' }],
             overrideFilter: /[^a-zA-Z\s\-']/g,
         },
         lastName: {
             label: 'Last Name',
+            type: 'text',
             dbColumn: 'lastName',
             validation: [{ type: 'required', errorMsg: 'Last name is required' }],
             overrideFilter: /[^a-zA-Z\s\-']/g,
         },
         email: {
             label: 'Email Address',
-            type: 'email',
-            validation: [{ type: 'email', errorMsg: 'Invalid email' }],
+            type: 'email', // The renderer will treat this as a standard text input
+            dbColumn: 'email',
+            validation: [{ type: 'email', errorMsg: 'Invalid email address' }],
         }
     },
     groups: {

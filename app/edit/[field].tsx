@@ -40,7 +40,8 @@ export default function GenericEditField() {
       const actualDbKey = config.dbColumn || fieldKey;
       
       if (data && data[actualDbKey] !== undefined) {
-        setForm({ [fieldKey]: String(data[actualDbKey]) });
+          // Ensure the key in setForm matches the key in the schema
+          setForm({ [fieldKey]: String(data[actualDbKey]) });
       }
       setLoading(false);
     }
@@ -101,22 +102,27 @@ export default function GenericEditField() {
     }
   };
 
-  const EDIT_SCHEMA: any[] = [{
-    sectionType: 'pills',
+ const EDIT_SCHEMA: any[] = [{
+    sectionType: 'insetGroup',
     label: `EDIT ${config?.label?.toUpperCase() || 'FIELD'}`,
     fields: [{ 
         ...config,
         key: fieldKey, 
         label: config?.label || fieldKey,
+        // --- OVERRIDE THESE TO FORCE INPUT MODE ---
+        mode: 'edit', 
+        destination: undefined, // This is the "Lock" that was hiding the input
+        type: config.type || 'text',
+        // ------------------------------------------
         config: { 
-          autoFocus: true, 
-          clearButtonMode: 'while-editing',
-          returnKeyType: 'done',
-          onSubmitEditing: handleSave,
-          ...config?.config 
+            autoFocus: true, 
+            clearButtonMode: 'while-editing',
+            returnKeyType: 'done',
+            onSubmitEditing: handleSave,
+            ...config?.config 
         }
     }]
-  }];
+}];
 
   if (loading) return null;
 

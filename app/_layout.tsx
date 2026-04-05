@@ -73,11 +73,14 @@ export default function RootLayout() {
           outline-width: 0 !important;
           appearance: none !important;
           border: none !important;
+          color: ${colors.text} !important;
+          -webkit-text-fill-color: ${colors.text} !important;
         }
         [data-glass-input="true"]:-webkit-autofill {
-          -webkit-text-fill-color: ${isDark ? '#ffffff' : '#000000'} !important;
           box-shadow: 0 0 0px 1000px transparent inset !important;
           transition: background-color 5000s ease-in-out 0s !important;
+          color: ${colors.text} !important;
+          -webkit-text-fill-color: ${colors.text} !important;
         }
         [data-glass-input="true"]::placeholder {
           color: ${colors.placeholderText} !important;
@@ -169,7 +172,6 @@ export default function RootLayout() {
       <ThemeProvider value={isDark ? DarkTheme : DefaultTheme}>
         <Stack screenOptions={{ headerShown: false }}>
           <Stack.Screen name="index" />
-          <Stack.Screen name="setup" />
           <Stack.Screen name="calendar/index" />
           <Stack.Screen name="calendar/year" />
           <Stack.Screen 
@@ -196,6 +198,13 @@ export default function RootLayout() {
               gestureEnabled: true,
             }} 
           />
+          <Stack.Screen name="calendar/setup" 
+            options={{ 
+                presentation: 'modal',
+                headerShown: false,
+                gestureEnabled: true,
+              }} 
+          />
           <Stack.Screen 
             name="calendar/selection-view" 
             options={{ 
@@ -204,13 +213,20 @@ export default function RootLayout() {
               headerShown: false,
             }} 
           />
-          <Stack.Screen name="settings" />
+          <Stack.Screen 
+            name="settings" 
+            options={{ 
+              presentation: 'modal',
+              headerShown: false,
+              gestureEnabled: true,
+            }} 
+          />
           <Stack.Screen 
             name="edit/[field]" 
             options={{ 
-              presentation: 'modal', 
+              presentation: 'modal',
+              headerShown: false,
               gestureEnabled: true,
-              animation: 'slide_from_bottom' 
             }} 
           />
         </Stack>

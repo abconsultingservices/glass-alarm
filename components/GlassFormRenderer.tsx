@@ -120,7 +120,6 @@ const GlassTaskList = ({ tasks, onUpdate, styles, colors, getPressedStyle, setSc
                     keyExtractor={(item) => item?.id || Crypto.randomUUID()}
                     scrollEnabled={false}
                     renderItem={({ item, drag, isActive }: RenderItemParams<any>) => {
-                        // Strict check: Only strike if showCheckmark is true, item is completed, AND text is not empty
                         const itemText = item?.text || item?.title || '';
                         const shouldStrike = showCheckmark && item?.completed && itemText.trim().length > 0;
 
@@ -277,7 +276,7 @@ export const GlassFormRenderer = ({ schema, form, setForm, errors, setErrors }: 
                 if (type === 'email' || key === 'email') filteredVal = val.replace(/[^a-zA-Z0-9@._%+-]/g, '');
                 else if (type === 'phone' || key === 'phone') filteredVal = val.replace(/[^0-9+\-\(\)\s,;*#]/g, '');
                 else if (type === 'url' || key === 'url') filteredVal = val.replace(/[^a-zA-Z0-9\-._~:/?#[\]@!$&'()*+,;=]/g, '');
-                else if (key === 'name') filteredVal = val.replace(/[^a-zA-Z\s\-']/g, '');
+                else if (key === 'firstName' || key === 'lastName' || key === 'name') filteredVal = val.replace(/[^a-zA-Z\s\-']/g, '');
             }
         }
 
@@ -324,180 +323,189 @@ export const GlassFormRenderer = ({ schema, form, setForm, errors, setErrors }: 
         const { defaultValue, ...cleanConfig } = field.config || {};
         const displayLabel = field.label.replace(/\(Optional\)/gi, '').trim();
 
-        return (
-            <View key={`f-row-${sIdx}-${field.key}-${index ?? 'm'}`}>
-                {(() => {
-                    if (isReadOnly) {
-                        return (
-                            <Pressable disabled={!field.destination} onPress={() => field.destination && router.push(field.destination as any)} style={({ pressed }) => [{ flexDirection: 'row', alignItems: 'center', paddingHorizontal: 16, minHeight: 54, justifyContent: 'space-between' }, field.destination && getPressedStyle(pressed)]}>
-                                <Text style={{ fontSize: 17, color: colors.text }}>{displayLabel}</Text>
-                                <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'flex-end', flex: 1, marginLeft: 20 }}>
-                                    <Text numberOfLines={1} style={{ fontSize: 17, color: colors.mutedText, textAlign: 'right', marginRight: field.destination ? 8 : 0 }}>{currentVal || 'Not set'}</Text>
-                                    {field.destination && <Ionicons name="chevron-forward" size={16} color={colors.mutedText} style={{ opacity: 0.5 }} />}
-                                </View>
-                            </Pressable>
-                        );
-                    }
+        const content = (() => {
+            if (isReadOnly) {
+                return (
+                    <Pressable disabled={!field.destination} onPress={() => field.destination && router.push(field.destination as any)} style={({ pressed }) => [{ flexDirection: 'row', alignItems: 'center', paddingHorizontal: 16, minHeight: 54, justifyContent: 'space-between' }, field.destination && getPressedStyle(pressed)]}>
+                        <Text style={{ fontSize: 17, color: colors.text }}>{displayLabel}</Text>
+                        <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'flex-end', flex: 1, marginLeft: 20 }}>
+                            <Text numberOfLines={1} style={{ fontSize: 17, color: colors.mutedText, textAlign: 'right', marginRight: field.destination ? 8 : 0 }}>{currentVal || 'Not set'}</Text>
+                            {field.destination && <Ionicons name="chevron-forward" size={16} color={colors.mutedText} style={{ opacity: 0.5 }} />}
+                        </View>
+                    </Pressable>
+                );
+            }
 
-                    if (field.type === 'date' || field.type === 'time') {
-                        const isDate = field.type === 'date';
-                        const isOptional = field.key.toLowerCase().includes('end');
+            if (field.type === 'date' || field.type === 'time') {
+                const isDate = field.type === 'date';
+                const isOptional = field.key.toLowerCase().includes('end');
 
-                        if (Platform.OS === 'web') {
-                            const refKey = `${field.key}-${index ?? 'main'}`;
-                            return (
-                                <View style={{ flexDirection: 'row', alignItems: 'center', paddingHorizontal: 16, minHeight: 54, justifyContent: 'space-between' }}>
-                                    <Text style={{ fontSize: 17, color: colors.text, flex: 1 }}>{displayLabel}</Text>
-                                    <Pressable 
-                                        onPress={() => inputRefs.current[refKey]?.showPicker?.()} 
-                                        style={({ pressed }) => [
-                                            { backgroundColor: 'rgba(255,255,255,0.08)', paddingHorizontal: 14, paddingVertical: 6, borderRadius: 20 },
-                                            getPressedStyle(pressed)
-                                        ]}
-                                    >
-                                        <Text style={{ fontSize: 17, color: hasValue ? colors.text : colors.placeholderText }}>
-                                            {hasValue ? (isDate ? currentVal : formatDisplayValue(currentVal, 'time')) : 'Not set'}
-                                        </Text>
-                                        <input 
-                                            ref={el => inputRefs.current[refKey] = el}
-                                            type={field.type} 
-                                            value={currentVal || ""}
-                                            onChange={(e) => handleUpdate(field.key, e.target.value, [], undefined, field.type, index, repeaterKey)}
-                                            style={{ position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, opacity: 0, cursor: 'pointer', width: '100%' }}
-                                        />
-                                    </Pressable>
-                                </View>
-                            );
-                        }
-
-                        const dateObj = new Date(hasValue ? (isDate ? `${currentVal}T00:00:00` : `1970-01-01T${currentVal}`) : Date.now());
-                        
-                        return (
-                            <View style={{ flexDirection: 'row', alignItems: 'center', paddingHorizontal: 16, minHeight: 54, justifyContent: 'space-between' }}>
-                                <Text style={{ fontSize: 17, color: colors.text, flex: 1 }} numberOfLines={1}>{displayLabel}</Text>
-                                
-                                <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'flex-end' }}>
-                                    {!hasValue ? (
-                                        <Pressable 
-                                            onPress={() => handleUpdate(field.key, isDate ? new Date().toISOString().split('T')[0] : '08:00', [], undefined, field.type, index, repeaterKey)}
-                                            style={({ pressed }) => [getPressedStyle(pressed), { paddingHorizontal: 12, paddingVertical: 6, backgroundColor: 'rgba(255,255,255,0.08)', borderRadius: 20 }]}
-                                        >
-                                            <Text style={{ fontSize: 17, color: colors.placeholderText }}>Not set</Text>
-                                        </Pressable>
-                                    ) : (
-                                        <View style={{ flexDirection: 'row', alignItems: 'center' }}>
-                                            <DateTimePicker 
-                                                value={isNaN(dateObj.getTime()) ? new Date() : dateObj} 
-                                                mode={field.type} 
-                                                display="compact" 
-                                                onChange={(e, d) => {
-                                                    if (d) {
-                                                        handleUpdate(field.key, isDate ? d.toISOString().split('T')[0] : d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', hour12: false }), [], undefined, field.type, index, repeaterKey);
-                                                    }
-                                                }} 
-                                                textColor={colors.text} 
-                                                themeVariant={colors.isDark ? 'dark' : 'light'} 
-                                            />
-                                            {isOptional && (
-                                                <Pressable 
-                                                    onPress={() => handleUpdate(field.key, '', [], undefined, field.type, index, repeaterKey)}
-                                                    style={({ pressed }) => [getPressedStyle(pressed), { marginLeft: 10, padding: 2 }]}
-                                                >
-                                                    <Ionicons name="close-circle" size={22} color={colors.mutedText} style={{ opacity: 0.6 }} />
-                                                </Pressable>
-                                            )}
-                                        </View>
-                                    )}
-                                </View>
-                            </View>
-                        );
-                    }
-
-                    if (field.type === 'select') {
-                        const activeOption = field.options?.find(o => o.value === currentVal);
-                        return (
-                            <Pressable onPress={() => { setActiveMenuField({ ...field }); setActiveMenuIndex(index ?? null); setMenuVisible(true); }} style={({ pressed }) => [{ flexDirection: 'row', alignItems: 'center', paddingHorizontal: 16, minHeight: 54, justifyContent: 'space-between' }, getPressedStyle(pressed)]}>
-                                <Text style={{ fontSize: 17, color: colors.text }}>{displayLabel}</Text>
-                                <View style={{ flexDirection: 'row', alignItems: 'center' }}>
-                                    <Text style={{ fontSize: 17, color: colors.mutedText, marginRight: 4 }}>{activeOption?.label || 'None'}</Text>
-                                    <Ionicons name="chevron-expand" size={16} color={colors.mutedText} style={{ opacity: 0.6 }} />
-                                </View>
-                            </Pressable>
-                        );
-                    }
-
-                    if (field.type === 'select-nav') {
-                        const activeOption = field.options?.find(o => o.value === currentVal);
-                        return (
-                            <Pressable
-                                onPress={() => router.push({
-                                    pathname: '/calendar/selection-view',
-                                    params: { 
-                                        key: field.key, title: field.label, currentValue: currentVal, options: JSON.stringify(field.options),
-                                        index: index !== undefined ? index.toString() : undefined,
-                                        repeaterKey: repeaterKey ?? undefined
-                                    }
-                                })}
-                                style={({ pressed }) => [getPressedStyle(pressed), { flexDirection: 'row', alignItems: 'center', paddingHorizontal: 16, minHeight: 54, justifyContent: 'space-between' }]}
-                            >
-                                <Text style={{ fontSize: 17, color: colors.text }}>{displayLabel}</Text>
-                                <View style={{ flexDirection: 'row', alignItems: 'center' }}>
-                                    <Text style={{ fontSize: 17, color: colors.mutedText, marginRight: 8 }}>{activeOption?.label || currentVal || 'Daily'}</Text>
-                                    <Ionicons name="chevron-forward" size={16} color={colors.mutedText} style={{ opacity: 0.5 }} />
-                                </View>
-                            </Pressable>
-                        );
-                    }
-
-                    if (field.type === 'switch') {
-                        return (
-                            <View style={{ flexDirection: 'row', alignItems: 'center', paddingHorizontal: 16, minHeight: 54, justifyContent: 'space-between' }}>
-                                <Text style={{ fontSize: 17, color: colors.text }}>{displayLabel}</Text>
-                                <Switch value={!!currentVal} onValueChange={(val) => handleUpdate(field.key, val, [], undefined, 'switch', index, repeaterKey)} trackColor={{ false: colors.glassBorder, true: colors.success }} thumbColor={Platform.OS === 'ios' ? undefined : '#FFFFFF'} />
-                            </View>
-                        );
-                    }
-
-                    if (field.type === 'customDays') {
-                        const days = ['S', 'M', 'T', 'W', 'T', 'F', 'S'];
-                        const selected = typeof currentVal === 'string' ? JSON.parse(currentVal || '[]') : [];
-                        return (
-                            <View style={{ padding: 16 }}>
-                                <Text style={localStyles.subLabel}>{displayLabel}</Text>
-                                <View style={{ flexDirection: 'row', justifyContent: 'space-between' }}>
-                                    {days.map((day, dIdx) => (
-                                        <Pressable key={dIdx} onPress={() => toggleDay(field.key, dIdx, index, repeaterKey)} style={({ pressed }) => [getPressedStyle(pressed), { width: 40, height: 40, borderRadius: 20, alignItems: 'center', justifyContent: 'center', backgroundColor: selected.includes(dIdx) ? colors.text : colors.glassBackground }]}>
-                                            <Text style={{ color: selected.includes(dIdx) ? colors.background : colors.text, fontWeight: '700' }}>{day}</Text>
-                                        </Pressable>
-                                    ))}
-                                </View>
-                            </View>
-                        );
-                    }
-
+                if (Platform.OS === 'web') {
+                    const refKey = `${field.key}-${index ?? 'main'}`;
                     return (
-                        <View style={isPill ? [styles.inputContainer, hasError && { borderColor: colors.error, borderWidth: 1.5 }] : [styles.inputRow]}>
-                            <View style={{ flexDirection: 'row', alignItems: 'center', width: '100%', paddingHorizontal: isPill ? 0 : 16, minHeight: 54 }}>
-                                {!isPill && <Text style={{ fontSize: 17, color: colors.text, marginRight: 10 }}>{displayLabel}</Text>}
-                                <View style={{ flex: 1, justifyContent: 'center' }}>
-                                    <TextInput 
-                                        style={[styles.inputField, !isPill && { textAlign: 'right', paddingRight: hasValue ? 30 : 0, color: colors.mutedText }]} 
-                                        value={valStr} placeholder={isPill ? field.label : ''} placeholderTextColor={colors.placeholderText} 
-                                        onChangeText={(t) => handleUpdate(field.key, t, field.validation, undefined, undefined, index, repeaterKey)} 
-                                        dataSet={{ 'glass-input': 'true', 'inset-input': !isPill ? 'true' : 'false' }} {...cleanConfig} 
-                                    />
-                                </View>
-                                {hasValue && (
-                                    <View style={{ position: 'absolute', right: isPill ? 12 : 16 }}>
-                                        <Pressable onPress={() => handleUpdate(field.key, '', field.validation, undefined, undefined, index, repeaterKey)} style={({ pressed }) => [getPressedStyle(pressed), { padding: 4 }]}>
-                                            <Ionicons name="close-circle" size={18} color={hasError ? colors.error : colors.placeholderText} />
-                                        </Pressable>
-                                    </View>
-                                )}
-                            </View>
+                        <View style={{ flexDirection: 'row', alignItems: 'center', paddingHorizontal: 16, minHeight: 54, justifyContent: 'space-between' }}>
+                            <Text style={{ fontSize: 17, color: colors.text, flex: 1 }}>{displayLabel}</Text>
+                            <Pressable 
+                                onPress={() => inputRefs.current[refKey]?.showPicker?.()} 
+                                style={({ pressed }) => [
+                                    { backgroundColor: 'rgba(255,255,255,0.08)', paddingHorizontal: 14, paddingVertical: 6, borderRadius: 20 },
+                                    getPressedStyle(pressed)
+                                ]}
+                            >
+                                <Text style={{ fontSize: 17, color: hasValue ? colors.text : colors.placeholderText }}>
+                                    {hasValue ? (isDate ? currentVal : formatDisplayValue(currentVal, 'time')) : 'Not set'}
+                                </Text>
+                                <input 
+                                    ref={el => inputRefs.current[refKey] = el}
+                                    type={field.type} 
+                                    value={currentVal || ""}
+                                    onChange={(e) => handleUpdate(field.key, e.target.value, [], undefined, field.type, index, repeaterKey)}
+                                    style={{ position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, opacity: 0, cursor: 'pointer', width: '100%' }}
+                                />
+                            </Pressable>
                         </View>
                     );
-                })()}
+                }
+
+                const dateObj = new Date(hasValue ? (isDate ? `${currentVal}T00:00:00` : `1970-01-01T${currentVal}`) : Date.now());
+                
+                return (
+                    <View style={{ flexDirection: 'row', alignItems: 'center', paddingHorizontal: 16, minHeight: 54, justifyContent: 'space-between' }}>
+                        <Text style={{ fontSize: 17, color: colors.text, flex: 1 }} numberOfLines={1}>{displayLabel}</Text>
+                        
+                        <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'flex-end' }}>
+                            {!hasValue ? (
+                                <Pressable 
+                                    onPress={() => handleUpdate(field.key, isDate ? new Date().toISOString().split('T')[0] : '08:00', [], undefined, field.type, index, repeaterKey)}
+                                    style={({ pressed }) => [getPressedStyle(pressed), { paddingHorizontal: 12, paddingVertical: 6, backgroundColor: 'rgba(255,255,255,0.08)', borderRadius: 20 }]}
+                                >
+                                    <Text style={{ fontSize: 17, color: colors.placeholderText }}>Not set</Text>
+                                </Pressable>
+                            ) : (
+                                <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+                                    <DateTimePicker 
+                                        value={isNaN(dateObj.getTime()) ? new Date() : dateObj} 
+                                        mode={field.type} 
+                                        display="compact" 
+                                        onChange={(e, d) => {
+                                            if (d) {
+                                                handleUpdate(field.key, isDate ? d.toISOString().split('T')[0] : d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', hour12: false }), [], undefined, field.type, index, repeaterKey);
+                                            }
+                                        }} 
+                                        textColor={colors.text} 
+                                        themeVariant={colors.isDark ? 'dark' : 'light'} 
+                                    />
+                                    {isOptional && (
+                                        <Pressable 
+                                            onPress={() => handleUpdate(field.key, '', [], undefined, field.type, index, repeaterKey)}
+                                            style={({ pressed }) => [getPressedStyle(pressed), { marginLeft: 10, padding: 2 }]}
+                                        >
+                                            <Ionicons name="close-circle" size={22} color={colors.mutedText} style={{ opacity: 0.6 }} />
+                                        </Pressable>
+                                    )}
+                                </View>
+                            )}
+                        </View>
+                    </View>
+                );
+            }
+
+            if (field.type === 'select') {
+                const activeOption = field.options?.find(o => o.value === currentVal);
+                return (
+                    <Pressable onPress={() => { setActiveMenuField({ ...field }); setActiveMenuIndex(index ?? null); setMenuVisible(true); }} style={({ pressed }) => [{ flexDirection: 'row', alignItems: 'center', paddingHorizontal: 16, minHeight: 54, justifyContent: 'space-between' }, getPressedStyle(pressed)]}>
+                        <Text style={{ fontSize: 17, color: colors.text }}>{displayLabel}</Text>
+                        <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+                            <Text style={{ fontSize: 17, color: colors.mutedText, marginRight: 4 }}>{activeOption?.label || 'None'}</Text>
+                            <Ionicons name="chevron-expand" size={16} color={colors.mutedText} style={{ opacity: 0.6 }} />
+                        </View>
+                    </Pressable>
+                );
+            }
+
+            if (field.type === 'select-nav') {
+                const activeOption = field.options?.find(o => o.value === currentVal);
+                return (
+                    <Pressable
+                        onPress={() => router.push({
+                            pathname: '/calendar/selection-view',
+                            params: { 
+                                key: field.key, title: field.label, currentValue: currentVal, options: JSON.stringify(field.options),
+                                index: index !== undefined ? index.toString() : undefined,
+                                repeaterKey: repeaterKey ?? undefined
+                            }
+                        })}
+                        style={({ pressed }) => [getPressedStyle(pressed), { flexDirection: 'row', alignItems: 'center', paddingHorizontal: 16, minHeight: 54, justifyContent: 'space-between' }]}
+                    >
+                        <Text style={{ fontSize: 17, color: colors.text }}>{displayLabel}</Text>
+                        <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+                            <Text style={{ fontSize: 17, color: colors.mutedText, marginRight: 8 }}>{activeOption?.label || currentVal || 'Daily'}</Text>
+                            <Ionicons name="chevron-forward" size={16} color={colors.mutedText} style={{ opacity: 0.5 }} />
+                        </View>
+                    </Pressable>
+                );
+            }
+
+            if (field.type === 'switch') {
+                return (
+                    <View style={{ flexDirection: 'row', alignItems: 'center', paddingHorizontal: 16, minHeight: 54, justifyContent: 'space-between' }}>
+                        <Text style={{ fontSize: 17, color: colors.text }}>{displayLabel}</Text>
+                        <Switch value={!!currentVal} onValueChange={(val) => handleUpdate(field.key, val, [], undefined, 'switch', index, repeaterKey)} trackColor={{ false: colors.glassBorder, true: colors.success }} thumbColor={Platform.OS === 'ios' ? undefined : '#FFFFFF'} />
+                    </View>
+                );
+            }
+
+            if (field.type === 'customDays') {
+                const days = ['S', 'M', 'T', 'W', 'T', 'F', 'S'];
+                const selected = typeof currentVal === 'string' ? JSON.parse(currentVal || '[]') : [];
+                return (
+                    <View style={{ padding: 16 }}>
+                        <Text style={localStyles.subLabel}>{displayLabel}</Text>
+                        <View style={{ flexDirection: 'row', justifyContent: 'space-between' }}>
+                            {days.map((day, dIdx) => (
+                                <Pressable key={dIdx} onPress={() => toggleDay(field.key, dIdx, index, repeaterKey)} style={({ pressed }) => [getPressedStyle(pressed), { width: 40, height: 40, borderRadius: 20, alignItems: 'center', justifyContent: 'center', backgroundColor: selected.includes(dIdx) ? colors.text : colors.glassBackground }]}>
+                                    <Text style={{ color: selected.includes(dIdx) ? colors.background : colors.text, fontWeight: '700' }}>{day}</Text>
+                                </Pressable>
+                            ))}
+                        </View>
+                    </View>
+                );
+            }
+
+            // --- DEFAULT: Standard Text Input ---
+            return (
+                <View style={isPill ? [styles.inputContainer, hasError && { borderColor: colors.error, borderWidth: 1.5 }] : [styles.inputRow]}>
+                    <View style={{ flexDirection: 'row', alignItems: 'center', width: '100%', paddingHorizontal: isPill ? 0 : 16, minHeight: 54 }}>
+                        {!isPill && <Text style={{ fontSize: 17, color: colors.text, marginRight: 10 }}>{displayLabel}</Text>}
+                        <View style={{ flex: 1, justifyContent: 'center' }}>
+                            <TextInput 
+                                style={[
+                                    styles.inputField, 
+                                    !isPill && { textAlign: 'right', paddingRight: hasValue ? 30 : 0, color: colors.text }
+                                ]} 
+                                value={valStr} 
+                                placeholder={isPill ? field.label : 'Enter value...'} 
+                                placeholderTextColor={colors.placeholderText} 
+                                onChangeText={(t) => handleUpdate(field.key, t, field.validation, field.overrideFilter, field.type, index, repeaterKey)} 
+                                dataSet={{ 'glass-input': 'true', 'inset-input': !isPill ? 'true' : 'false' }} 
+                                {...cleanConfig} 
+                            />
+                        </View>
+                        {hasValue && (
+                            <View style={{ position: 'absolute', right: isPill ? 12 : 16 }}>
+                                <Pressable onPress={() => handleUpdate(field.key, '', field.validation, undefined, undefined, index, repeaterKey)} style={({ pressed }) => [getPressedStyle(pressed), { padding: 4 }]}>
+                                    <Ionicons name="close-circle" size={18} color={hasError ? colors.error : colors.placeholderText} />
+                                </Pressable>
+                            </View>
+                        )}
+                    </View>
+                </View>
+            );
+        })();
+
+        return (
+            <View key={`f-row-${sIdx}-${field.key}-${index ?? 'm'}`}>
+                {content}
                 {hasError && <Text style={{ color: colors.error, fontSize: 12, paddingHorizontal: 16, paddingBottom: 4 }}>{errors[errorKey]}</Text>}
                 {!isLast && section.sectionType === 'insetGroup' && <View style={styles.divider} />}
             </View>

@@ -2,6 +2,7 @@ import React, { useState, useMemo, useEffect, useCallback, useRef } from 'react'
 import { View, Text, Pressable, Platform, FlatList, Switch, StyleSheet, Dimensions, Animated, DeviceEventEmitter } from 'react-native';
 import { Calendar } from 'react-native-calendars'; 
 import { useRouter, useFocusEffect } from 'expo-router'; 
+import { dbService } from '../../services/DatabaseService';
 import { Ionicons } from '@expo/vector-icons';
 import { useThemedStyles } from '../../hooks/useThemedStyles';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -207,6 +208,23 @@ export default function CalendarMonthView() {
   }, [currentMonth]);
 
   const formatTime = (date: Date) => date.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit', hour12: true });
+
+  useEffect(() => {
+    const checkUserStatus = async () => {
+        await dbService.initialize();
+        const user = await dbService.getLatestUser();
+        
+        // If user is still 'New User', pop the setup modal automatically
+        if (user?.firstName === 'New' && user?.lastName === 'User') {
+            // Use requestAnimationFrame to ensure the stack is ready to present a modal
+            requestAnimationFrame(() => {
+            router.push('/calendar/setup');
+            });
+        }
+    };
+
+    checkUserStatus();
+  }, []);
 
   return (
     <View style={{ flex: 1, backgroundColor: colors.background }}>

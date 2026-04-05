@@ -1,34 +1,38 @@
 import { useEffect } from 'react';
 import { View, ActivityIndicator } from 'react-native';
 import { useRouter } from 'expo-router';
-import { db } from '../db/client';
 import { dbService } from '../services/DatabaseService';
+import { useThemedStyles } from '../hooks/useThemedStyles';
 
 export default function Index() {
   const router = useRouter();
+  const { colors } = useThemedStyles();
 
   useEffect(() => {
-    async function checkUser() {
-      // Small delay to ensure the Web Worker has initialized
-      await new Promise(resolve => setTimeout(resolve, 100));
-      
-      const exists = await dbService.hasUsers();
-      
-      if (exists) {
+    async function checkUserStatus() {
+      try {
+        await dbService.initialize();
         router.replace('/calendar');
-      } else {
-        router.replace('/setup');
+      } catch (e) {
+        console.error("Index: Auth check failed", e);
+        // Fallback to setup as a safety measure
+        router.replace('/calendar');
       }
     }
     
-    // Small timeout ensures the RootLayout useEffect (WASM path) runs first
-    const timer = setTimeout(checkUser, 200);
+    // Slight delay to allow RootLayout's initialization to breathe
+    const timer = setTimeout(checkUserStatus, 300);
     return () => clearTimeout(timer);
   }, []);
 
   return (
-    <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center', backgroundColor: '#fff' }}>
-      <ActivityIndicator size="large" color="#000" />
+    <View style={{ 
+      flex: 1, 
+      justifyContent: 'center', 
+      alignItems: 'center', 
+      backgroundColor: colors.background 
+    }}>
+      <ActivityIndicator size="large" color={colors.primary} />
     </View>
   );
 }

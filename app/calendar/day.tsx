@@ -1,5 +1,5 @@
 import React, { useState, useMemo, useCallback, useRef } from 'react';
-import { View, Text, Pressable, Platform, FlatList, Switch, StyleSheet, Dimensions, Animated } from 'react-native';
+import { View, Text, Pressable, Platform, FlatList, Switch, StyleSheet, Dimensions, Animated, DeviceEventEmitter } from 'react-native';
 import { useRouter, useFocusEffect } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { useThemedStyles } from '../../hooks/useThemedStyles';
@@ -16,10 +16,8 @@ export default function DayView() {
   const { colors, styles, getPressedStyle } = useThemedStyles();
   const isWeb = Platform.OS === 'web';
 
-  // --- GLASS ANIMATION SETUP ---
   const scrollY = useRef(new Animated.Value(0)).current;
 
-  // Syncing with Month view logic: .9 (solid) to 0.65 (glassy)
   const glassOpacity = scrollY.interpolate({
     inputRange: [0, 50],
     outputRange: [.9, 0.65],
@@ -34,36 +32,52 @@ export default function DayView() {
 
   const [systemToday, setSystemToday] = useState(getLocalTodayString());
   const [selectedDate, setSelectedDate] = useState(systemToday);
-  const [routines, setRoutines] = useState<RoutineWithSchedule[]>([]);
+  const [routines, setRoutines] = useState<any[]>([]); // Changed to any for instanceStats
   const [exceptions, setExceptions] = useState<RoutineException[]>([]);
   let touchX = 0;
 
-  // --- DATA SYNC ---
-  useFocusEffect(
-    useCallback(() => {
+  // --- DATA SYNC (Synced with Month View Logic) ---
+  const syncState = useCallback(async () => {
+    try {
       const freshToday = getLocalTodayString();
       setSystemToday(freshToday);
 
-      const syncState = async () => {
-        try {
-          const savedDate = await AsyncStorage.getItem('calendar_last_date');
-          const activeDate = savedDate || freshToday;
-          
-          if (savedDate) setSelectedDate(savedDate);
+      const savedDate = await AsyncStorage.getItem('calendar_last_date');
+      const activeDate = savedDate || freshToday;
+      
+      if (savedDate) setSelectedDate(activeDate);
 
-          const [fetchedRoutines, fetchedExceptions] = await Promise.all([
-            RoutineService.getRoutines(activeDate),
-            RoutineService.getExceptions(activeDate)
-          ]);
+      const [fetchedRoutines, fetchedExceptions] = await Promise.all([
+        RoutineService.getRoutines(activeDate),
+        RoutineService.getExceptions(activeDate)
+      ]);
+
+      // --- HYDRATION: Fetch specific counts for each instance ---
+      const hydrated = await Promise.all(fetchedRoutines.map(async (r) => {
+          const occurrences = r.maxOccurrences || 1;
+          const instanceData = [];
           
-          setRoutines(fetchedRoutines);
-          setExceptions(fetchedExceptions);
-        } catch (e) {
-          console.error("DayView Sync failed", e);
-        }
-      };
+          for (let i = 0; i < occurrences; i++) {
+              const counts = await (RoutineService as any).getInstanceTaskCount(r.rguid, activeDate, i);
+              instanceData.push({ index: i, ...counts });
+          }
+          
+          return { ...r, instanceStats: instanceData };
+      }));
+      
+      setRoutines(hydrated);
+      setExceptions(fetchedExceptions);
+    } catch (e) {
+      console.error("DayView Sync failed", e);
+    }
+  }, [selectedDate]);
+
+  useFocusEffect(
+    useCallback(() => {
       syncState();
-    }, [selectedDate])
+      const sub = DeviceEventEmitter.addListener('ROUTINE_UPDATE_SUCCESS', syncState);
+      return () => sub.remove();
+    }, [syncState])
   );
 
   const updateDate = async (date: string) => {
@@ -79,6 +93,7 @@ export default function DayView() {
     setExceptions(nextEx);
   };
 
+  // --- WEEK STRIP LOGIC ---
   const weekDays = useMemo(() => {
     const current = new Date(selectedDate + 'T00:00:00');
     const dayOfWeek = current.getDay(); 
@@ -125,7 +140,6 @@ export default function DayView() {
             ex.routineId === routine.rguid && ex.date === selectedDate && ex.instanceIndex === i
           );
 
-          // Parse HH:mm string safely for the current viewed day
           const [h, min] = routine.startTime.split(':').map(Number);
           const start = new Date(y, mon - 1, d, h, min, 0, 0);
           
@@ -135,6 +149,11 @@ export default function DayView() {
 
           const end = new Date(start.getTime() + (routine.duration || 30) * 60000);
 
+          // Fetch stats from hydrated state
+          const stats = routine.instanceStats?.find((s: any) => s.index === i);
+          const totalTasks = stats?.total || 0;
+          const completedTasks = stats?.completed || 0;
+
           expandedList.push({ 
             ...routine, 
             id: `${routine.rguid}-idx-${i}`, 
@@ -142,7 +161,9 @@ export default function DayView() {
             startTime: start, 
             endTime: end, 
             instanceIndex: i,
-            isInstanceEnabled: routine.isEnabled && !hasException 
+            isInstanceEnabled: routine.isEnabled && !hasException,
+            progressLabel: totalTasks > 0 ? `${completedTasks}/${totalTasks}` : null,
+            isComplete: totalTasks > 0 && completedTasks === totalTasks
           });
         }
       }
@@ -158,18 +179,13 @@ export default function DayView() {
     };
   }, [selectedDate]);
 
-  const handleSafeBack = () => {
-    if (router.canGoBack()) router.back();
-    else router.replace('/calendar');
-  };
-
   const formatTime = (date: Date) => date.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit', hour12: true });
 
   return (
     <View style={{ flex: 1, backgroundColor: colors.background }}>
-      {/* --- TOP FIXED HEADER --- */}
+      {/* Header */}
       <View style={[styles.calendarHeaderRow, { paddingTop: insets.top, height: 54 + insets.top }]}>
-        <Pressable onPress={handleSafeBack} style={({ pressed }) => [getPressedStyle(pressed), styles.headerPill]}>
+        <Pressable onPress={() => router.back()} style={({ pressed }) => [getPressedStyle(pressed), styles.headerPill]}>
           <Ionicons name="chevron-back" size={20} color={colors.text} />
           <Text style={{ color: colors.text, fontSize: 17 }}>{monthName}</Text>
         </Pressable>
@@ -192,11 +208,6 @@ export default function DayView() {
 
       <View>
         <View onTouchStart={onTouchStart} onTouchEnd={onTouchEnd} style={localStyles.weekContainer}>
-          {isWeb && (
-            <Pressable onPress={() => changeWeek('prev')} style={{ paddingRight: 10 }}>
-              <Ionicons name="chevron-back" size={20} color={colors.text} />
-            </Pressable>
-          )}
           <View style={localStyles.weekStrip}>
             {weekDays.map((day) => (
               <Pressable key={day.date} onPress={() => updateDate(day.date)} style={localStyles.dayItem}>
@@ -215,11 +226,6 @@ export default function DayView() {
               </Pressable>
             ))}
           </View>
-          {isWeb && (
-            <Pressable onPress={() => changeWeek('next')} style={{ paddingLeft: 10 }}>
-              <Ionicons name="chevron-forward" size={20} color={colors.text} />
-            </Pressable>
-          )}
         </View>
 
         <View style={localStyles.dateLabelContainer}>
@@ -228,7 +234,6 @@ export default function DayView() {
         </View>
       </View>
 
-      {/* --- SCROLLABLE ROUTINES LIST --- */}
       <FlatList
         data={displayRoutines}
         keyExtractor={(item) => item.id}
@@ -240,33 +245,62 @@ export default function DayView() {
         scrollEventThrottle={16}
         contentContainerStyle={{ paddingHorizontal: 16, paddingBottom: 140, paddingTop: 10 }}
         renderItem={({ item }) => (
-          <View style={[styles.insetGroup, { marginBottom: 12, padding: 16, flexDirection: 'row', alignItems: 'center' }]}>
-            <View style={{ flex: 1, opacity: item.isInstanceEnabled ? 1 : 0.4 }}>
-              <Text style={{ color: colors.text, fontSize: 17, fontWeight: '600' }}>{item.name}</Text>
-              <Text style={{ color: colors.mutedText, fontSize: 13, marginTop: 2 }}>{item.type || 'daily'}</Text>
+          <View style={[styles.insetGroup, { marginBottom: 12, padding: 0, overflow: 'hidden' }]}>
+            <View style={{ flexDirection: 'row', alignItems: 'center', padding: 16 }}>
+              <Pressable 
+                onPress={() => router.push({
+                  pathname: '/calendar/view-tasks',
+                  params: { 
+                    routineId: item.originalId, 
+                    date: selectedDate,
+                    instanceIndex: item.instanceIndex.toString(),
+                    name: item.name 
+                  }
+                })}
+                style={({ pressed }) => [getPressedStyle(pressed), { flex: 1, flexDirection: 'row', alignItems: 'center' }]}
+              >
+                <View style={{ flex: 1, opacity: item.isInstanceEnabled ? 1 : 0.4 }}>
+                  <Text style={{ color: colors.text, fontSize: 17, fontWeight: '600' }}>{item.name}</Text>
+                  <View style={{ flexDirection: 'row', alignItems: 'center', marginTop: 2 }}>
+                    <Text style={{ color: colors.mutedText, fontSize: 13 }}>
+                        {item.type || 'daily'} {item.maxOccurrences > 1 ? `(${item.instanceIndex + 1})` : ''}
+                    </Text>
+                    {item.progressLabel && (
+                        <>
+                            <Text style={{ color: colors.mutedText, fontSize: 13, marginHorizontal: 6 }}>•</Text>
+                            <Text style={{ 
+                                color: item.isComplete ? colors.success : colors.mutedText, 
+                                fontSize: 13, 
+                                fontWeight: '600' 
+                            }}>
+                                {item.progressLabel} Tasks
+                            </Text>
+                        </>
+                    )}
+                  </View>
+                </View>
+                <View style={{ alignItems: 'flex-end', marginRight: 12, opacity: item.isInstanceEnabled ? 1 : 0.4 }}>
+                  <Text style={{ color: colors.text, fontSize: 15, fontWeight: '500' }}>{formatTime(item.startTime)}</Text>
+                  <Text style={{ color: colors.mutedText, fontSize: 12 }}>to {formatTime(item.endTime)}</Text>
+                </View>
+              </Pressable>
+              
+              <Switch
+                value={item.isInstanceEnabled} 
+                trackColor={{ false: colors.glassBorder, true: colors.success }}
+                thumbColor={'#FFF'}
+                onValueChange={() => handleToggleInstance(item)}
+              />
             </View>
-            <View style={{ alignItems: 'flex-end', marginRight: 12, opacity: item.isInstanceEnabled ? 1 : 0.4 }}>
-              <Text style={{ color: colors.text, fontSize: 15, fontWeight: '500' }}>{formatTime(item.startTime)}</Text>
-              <Text style={{ color: colors.mutedText, fontSize: 12 }}>to {formatTime(item.endTime)}</Text>
-            </View>
-            <Switch 
-              value={item.isInstanceEnabled} 
-              onValueChange={() => handleToggleInstance(item)}
-              trackColor={{ false: colors.glassBorder, true: colors.success }} 
-              thumbColor={'#FFF'} 
-            />
           </View>
         )}
         ListEmptyComponent={<Text style={{ color: colors.mutedText, textAlign: 'center', marginTop: 40 }}>No Routines Scheduled</Text>}
       />
 
-      {/* --- DE-COUPLED FLOATING ACTION LAYER --- */}
       <View style={[
         localStyles.floatingFooter, 
         { bottom: insets.bottom > 0 ? insets.bottom - 16 : 4 }
       ]}>
-        
-        {/* LEFT BUTTON: TODAY */}
         <Pressable 
           onPress={() => updateDate(getLocalTodayString())} 
           style={({ pressed }) => [getPressedStyle(pressed), { width: 110, height: 44 }]}
@@ -287,9 +321,8 @@ export default function DayView() {
           </View>
         </Pressable>
 
-        {/* RIGHT BUTTON: ROUTINES */}
         <Pressable 
-          onPress={() => router.push('/routines')} 
+          onPress={() => router.push('/calendar/routines')} 
           style={({ pressed }) => [getPressedStyle(pressed), { minWidth: 130, height: 44 }]}
         >
           <Animated.View style={[

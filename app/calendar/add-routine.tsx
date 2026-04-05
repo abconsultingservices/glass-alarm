@@ -46,27 +46,15 @@ export default function AddRoutine() {
     useEffect(() => {
         if (isEditMode) {
             const loadData = async () => {
-                // We pass a dummy date just to get the master template structure
                 const today = new Date().toISOString().split('T')[0];
                 const existing = await RoutineService.getRoutineById(rguid, today, 0);
                 
                 if (existing) {
-                    // Fetch the schedule specifically for the master
-                    const all = await RoutineService.getAllRoutines();
-                    const masterSched = all.find(r => r.rguid === rguid);
-
                     setForm({
                         name: existing.name,
                         duration: String(existing.duration),
                         isEnabled: existing.isEnabled,
-                        schedules: [{
-                            type: masterSched?.type || 'daily',
-                            startDate: masterSched?.startDate || today,
-                            startTime: masterSched?.startTime || '08:00',
-                            customDays: masterSched?.customDays || '[]',
-                            frequencyHours: String(masterSched?.frequencyHours || ''),
-                            maxOccurrences: String(masterSched?.maxOccurrences || '1')
-                        }],
+                        schedules: existing.schedules, // Now correctly populated from DB
                         tasks: existing.tasks || []
                     });
                 }
