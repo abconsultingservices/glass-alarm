@@ -3,7 +3,7 @@ import { View, Text, Pressable, Animated, ScrollView, Platform, DeviceEventEmitt
 import { useRouter, useLocalSearchParams } from 'expo-router'; 
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { dbService } from '../../services/DatabaseService';
-import { RoutineService } from '../../services/routineService'; // Added
+import { RoutineService } from '../../services/routineService';
 import { useThemedStyles } from '../../hooks/useThemedStyles';
 import { GlassFormRenderer } from '../../components/GlassFormRenderer';
 import { getInitialFormState, getInitialErrorState, validateForm } from '../../utils/ValidationEngine';
@@ -16,16 +16,14 @@ export default function AddRoutine() {
     const insets = useSafeAreaInsets();
     const { styles, colors, getPressedStyle } = useThemedStyles(); 
 
-    const rguid = params.rguid as string; // Check if we are editing
+    const rguid = params.rguid as string;
     const isEditMode = !!rguid;
+    const contextDate = (params.selectedDate && typeof params.selectedDate === 'string') 
+        ? params.selectedDate 
+        : new Date().toISOString().split('T')[0];
 
     const [loading, setLoading] = useState(isEditMode);
     const [form, setForm] = useState(() => {
-        const initial = getInitialFormState([]); // Placeholder
-        const contextDate = (params.selectedDate && typeof params.selectedDate === 'string') 
-            ? params.selectedDate 
-            : new Date().toISOString().split('T')[0];
-
         return { 
             name: '',
             duration: '30',
@@ -42,19 +40,16 @@ export default function AddRoutine() {
         };
     });
 
-    // --- LOAD DATA FOR EDIT MODE ---
     useEffect(() => {
         if (isEditMode) {
             const loadData = async () => {
-                const today = new Date().toISOString().split('T')[0];
-                const existing = await RoutineService.getRoutineById(rguid, today, 0);
-                
+                const existing = await RoutineService.getRoutineById(rguid, contextDate, 0);
                 if (existing) {
                     setForm({
                         name: existing.name,
                         duration: String(existing.duration),
                         isEnabled: existing.isEnabled,
-                        schedules: existing.schedules, // Now correctly populated from DB
+                        schedules: existing.schedules,
                         tasks: existing.tasks || []
                     });
                 }
@@ -64,7 +59,6 @@ export default function AddRoutine() {
         }
     }, [rguid]);
 
-    // --- SCHEMA ---
     const schema = useMemo(() => [
         {
             sectionType: 'insetGroup' as const,
@@ -98,7 +92,7 @@ export default function AddRoutine() {
             return [{
                 sectionType: 'tasks' as const,
                 label: 'ROUTINE TASKS',
-                footer: 'Add steps to your routine. Long-press the handle to reorder.',
+                footer: 'Add steps to your routine. Existing progress on this day is preserved for identical tasks.',
                 fields: [] ,
                 config: { showCheckmark: false, enableSwipeDelete: true }
             }];
@@ -132,12 +126,13 @@ export default function AddRoutine() {
 
         let success = false;
         if (isEditMode) {
-            success = await RoutineService.updateRoutine( // Use RoutineService here
+            success = await RoutineService.updateRoutineWithSync(
                 rguid,
                 form.name,
                 parseInt(form.duration) || 0,
                 form.schedules,
-                form.tasks
+                form.tasks,
+                contextDate
             );
         } else {
             success = await dbService.createRoutine(

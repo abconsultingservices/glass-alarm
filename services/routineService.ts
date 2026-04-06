@@ -41,7 +41,6 @@ export const RoutineService = {
       const { gguid } = await RoutineService.getGuids();
       if (!gguid) return [];
 
-      // REMOVED "AND r.isActive = 1" to allow disabled routines to show as 'ghosts'
       const sql = `
         SELECT 
           r.rguid, r.name, r.isActive as isEnabled, r.duration,
@@ -90,7 +89,6 @@ export const RoutineService = {
     try {
         const db = await (dbService as any).getDb();
         
-        // JOIN with routine_schedules to get template defaults for the Edit screen
         const routine = await db.getFirstAsync(
             `SELECT 
                 r.rguid, r.name, r.duration, r.isActive,
@@ -130,7 +128,6 @@ export const RoutineService = {
         return {
             ...routine,
             isEnabled: routine.isActive === 1,
-            // Map schedule fields into the array format the GlassForm expects
             schedules: [{
                 type: routine.type || 'daily',
                 startDate: routine.startDate,
@@ -161,49 +158,44 @@ export const RoutineService = {
             if (!uguid || !gguid) return false;
 
             await db.withTransactionAsync(async () => {
+                // --- 1. Master Template Update (Restricted to 'future' scope) ---
                 if (scope === 'future') {
-                    await db.runAsync(`DELETE FROM routine_tasks WHERE rguid = ?`, [rguid]);
+                    await db.runAsync(`DELETE FROM routine_tasks WHERE rguid = ? AND isInstanceTask = 0`, [rguid]);
                     for (let i = 0; i < tasks.length; i++) {
                         const t = tasks[i];
+                        const txt = t.title || t.text || '';
+                        if (!txt.trim()) continue;
                         await db.runAsync(
                             `INSERT INTO routine_tasks (rtguid, rguid, uguid, gguid, text, displayOrder, isInstanceTask, createdBy, lastModifiedBy)
                             VALUES (?, ?, ?, ?, ?, ?, 0, ?, ?)`,
-                            [t.id, rguid, uguid, gguid, t.title || t.text || '', i, uguid, uguid]
+                            [t.id || Crypto.randomUUID(), rguid, uguid, gguid, txt, i, uguid, uguid]
                         );
-                    }
-                } else {
-                    for (const t of tasks) {
-                        const exists = await db.getFirstAsync(`SELECT rtguid FROM routine_tasks WHERE rtguid = ?`, [t.id]);
-                        if (!exists) {
-                            await db.runAsync(
-                                `INSERT INTO routine_tasks (rtguid, rguid, uguid, gguid, text, displayOrder, isInstanceTask, createdBy, lastModifiedBy)
-                                VALUES (?, ?, ?, ?, ?, 0, 1, ?, ?)`,
-                                [t.id, rguid, uguid, gguid, t.title || t.text || '', uguid, uguid]
-                            );
-                        }
                     }
                 }
 
+                // --- 2. Determine target instances to reconcile ---
                 let targets: { date: string, idx: number }[] = [];
                 if (scope === 'instance') {
                     targets = [{ date, idx: instanceIndex }];
                 } else if (scope === 'day') {
                     const sched = await db.getFirstAsync(`SELECT maxOccurrences FROM routine_schedules WHERE rguid = ?`, [rguid]);
                     const max = sched?.maxOccurrences || 1;
-                    for (let i = instanceIndex; i < max; i++) {
-                        targets.push({ date, idx: i });
-                    }
+                    for (let i = 0; i < max; i++) targets.push({ date, idx: i });
                 } else {
+                    // SCOPE: FUTURE -> Only target existing instances from the selected point forward.
+                    // This prevents the reconciler from deleting/modifying past task_instances.
                     const rows = await db.getAllAsync(
                         `SELECT instanceDate as date, instanceIndex as idx FROM routine_instances 
-                        WHERE rguid = ? AND (instanceDate > ? OR (instanceDate = ? AND instanceIndex >= ?))`,
+                        WHERE rguid = ? 
+                        AND (instanceDate > ? OR (instanceDate = ? AND instanceIndex >= ?))`,
                         [rguid, date, date, instanceIndex]
                     );
                     targets = rows.length > 0 ? rows : [{ date, idx: instanceIndex }];
                 }
 
+                // --- 3. Synchronize task instances ---
                 for (const target of targets) {
-                    const isCurrentInstance = (target.date === date && target.idx === instanceIndex);
+                    const isOrigin = (target.date === date && target.idx === instanceIndex);
 
                     let ri = await db.getFirstAsync(
                         `SELECT riguid FROM routine_instances WHERE rguid = ? AND instanceDate = ? AND instanceIndex = ?`,
@@ -212,6 +204,7 @@ export const RoutineService = {
 
                     let riguid = ri?.riguid;
                     if (!riguid) {
+                        // Create instance only for relevant upcoming days we are forcing sync on
                         riguid = Crypto.randomUUID();
                         await db.runAsync(
                             `INSERT INTO routine_instances (riguid, rguid, uguid, gguid, instanceDate, instanceIndex, startTime, createdBy)
@@ -220,38 +213,80 @@ export const RoutineService = {
                         );
                     }
 
-                    const existingCompletions: Record<string, number> = {};
-                    if (!isCurrentInstance) {
-                        const currentStates = await db.getAllAsync(
-                            `SELECT rtguid, isComplete FROM task_instances WHERE riguid = ?`, [riguid]
-                        );
-                        currentStates.forEach((s: any) => {
-                            existingCompletions[s.rtguid] = s.isComplete;
-                        });
-                    }
+                    // Map existing completions by text to preserve status across master changes
+                    const completions = new Set();
+                    const currentDone = await db.getAllAsync(
+                        `SELECT text FROM task_instances WHERE riguid = ? AND isComplete = 1`, [riguid]
+                    );
+                    currentDone.forEach((s: any) => completions.add(s.text));
 
                     await db.runAsync(`DELETE FROM task_instances WHERE riguid = ?`, [riguid]);
+                    
                     for (let i = 0; i < tasks.length; i++) {
                         const t = tasks[i];
-                        
-                        const statusToSave = isCurrentInstance 
-                            ? (t.completed ? 1 : 0) 
-                            : (existingCompletions[t.id] || 0);
+                        const txt = t.title || t.text || '';
+                        if (!txt.trim()) continue;
+
+                        // If origin, use the current UI state. If future instance, use the text-match from before.
+                        const isDone = isOrigin ? (t.completed ? 1 : 0) : (completions.has(txt) ? 1 : 0);
 
                         await db.runAsync(
                             `INSERT INTO task_instances (tiguid, riguid, rtguid, uguid, text, displayOrder, isComplete, createdBy, lastModifiedBy)
                             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-                            [Crypto.randomUUID(), riguid, t.id, uguid, t.title || t.text, i, statusToSave, uguid, uguid]
+                            [Crypto.randomUUID(), riguid, t.id || Crypto.randomUUID(), uguid, txt, i, isDone, uguid, uguid]
                         );
                     }
                 }
             });
             return true;
         } catch (e) {
-            console.error("updateTaskInstances failed:", e);
+            console.error("RoutineService.updateTaskInstances failed:", e);
             return false;
         }
     },
+
+  updateRoutineWithSync: async (
+    rguid: string, 
+    name: string, 
+    duration: number, 
+    schedules: any[], 
+    tasks: any[],
+    targetDate: string
+  ): Promise<boolean> => {
+    try {
+      const db = await (dbService as any).getDb();
+      const { uguid, gguid } = await RoutineService.getGuids();
+      if (!uguid || !gguid) return false;
+
+      await db.withTransactionAsync(async () => {
+        // Update Routine Metadata
+        await db.runAsync(
+          `UPDATE routines SET name = ?, duration = ?, lastModifiedBy = ?, lastModifiedDate = CURRENT_TIMESTAMP WHERE rguid = ?`,
+          [name, duration, uguid, rguid]
+        );
+
+        // Update Routine Schedules
+        await db.runAsync(`DELETE FROM routine_schedules WHERE rguid = ?`, [rguid]);
+        for (const s of schedules) {
+          const sguid = Crypto.randomUUID();
+          const freq = s.frequencyHours ? parseInt(s.frequencyHours.toString()) : null;
+          const maxOcc = s.maxOccurrences ? parseInt(s.maxOccurrences.toString()) : 1;
+          await db.runAsync(
+            `INSERT INTO routine_schedules (sguid, rguid, uguid, gguid, type, customDays, startDate, startTime, endDate, frequencyHours, maxOccurrences, createdBy, lastModifiedBy)
+             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+            [sguid, rguid, uguid, gguid, s.type, s.customDays || null, s.startDate, s.startTime, s.endDate || null, freq, maxOcc, uguid, uguid]
+          );
+        }
+
+        // Trigger smart task sync (Scope: future, start from 0 index of target date)
+        await RoutineService.updateTaskInstances(rguid, targetDate, 0, tasks, 'future');
+      });
+      return true;
+    } catch (e) {
+      console.error("RoutineService.updateRoutineWithSync failed:", e);
+      return false;
+    }
+  },
 
   getExceptions: async (targetDateISO: string): Promise<RoutineException[]> => {
     try {
@@ -363,65 +398,7 @@ export const RoutineService = {
     schedules: any[], 
     tasks: any[]
   ): Promise<boolean> => {
-    try {
-      const db = await (dbService as any).getDb();
-      const { uguid, gguid } = await RoutineService.getGuids();
-      
-      if (!uguid || !gguid) {
-        console.error("RoutineService: Missing session GUIDs for update");
-        return false;
-      }
-
-      await db.withTransactionAsync(async () => {
-        await db.runAsync(
-          `UPDATE routines 
-           SET name = ?, duration = ?, lastModifiedBy = ?, lastModifiedDate = CURRENT_TIMESTAMP 
-           WHERE rguid = ?`,
-          [name, duration, uguid, rguid]
-        );
-
-        await db.runAsync(`DELETE FROM routine_schedules WHERE rguid = ?`, [rguid]);
-        
-        for (const s of schedules) {
-          const sguid = Crypto.randomUUID();
-          const freq = s.frequencyHours ? parseInt(s.frequencyHours.toString()) : null;
-          const maxOcc = s.maxOccurrences ? parseInt(s.maxOccurrences.toString()) : 1;
-
-          await db.runAsync(
-            `INSERT INTO routine_schedules (
-                sguid, rguid, uguid, gguid, type, 
-                customDays, startDate, startTime, endDate,
-                frequencyHours, maxOccurrences, 
-                createdBy, lastModifiedBy
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-            [
-              sguid, rguid, uguid, gguid, s.type, 
-              s.customDays || null, s.startDate, s.startTime, 
-              s.endDate || null, freq, maxOcc, uguid, uguid
-            ]
-          );
-        }
-
-        await db.runAsync(`DELETE FROM routine_tasks WHERE rguid = ? AND isInstanceTask = 0`, [rguid]);
-        
-        for (let i = 0; i < tasks.length; i++) {
-          const t = tasks[i];
-          const taskText = t.title || t.text || '';
-          if (!taskText.trim()) continue;
-
-          await db.runAsync(
-            `INSERT INTO routine_tasks (rtguid, rguid, uguid, gguid, text, displayOrder, isInstanceTask, createdBy, lastModifiedBy) 
-             VALUES (?, ?, ?, ?, ?, ?, 0, ?, ?)`,
-            [Crypto.randomUUID(), rguid, uguid, gguid, taskText, i, uguid, uguid]
-          );
-        }
-      });
-
-      console.log(`RoutineService: Updated "${name}" template successfully.`);
-      return true;
-    } catch (e) {
-      console.error("RoutineService.updateRoutine failed:", e);
-      return false;
-    }
+    // Legacy support: redirects to the smarter sync logic with today's anchor
+    return RoutineService.updateRoutineWithSync(rguid, name, duration, schedules, tasks, new Date().toISOString().split('T')[0]);
   }
 };

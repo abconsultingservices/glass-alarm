@@ -154,13 +154,21 @@ CREATE TABLE IF NOT EXISTS routine_tasks (
     gguid TEXT NOT NULL,
     text TEXT NOT NULL,
     displayOrder INTEGER NOT NULL,
-    isComplete INTEGER DEFAULT 0,
-    isInstanceTask INTEGER DEFAULT 0,  -- 0 = Master, 1 = Instance-Specific/Shadow
-    createDate TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    isComplete INTEGER,
+    isInstanceTask INTEGER,
+
+    -- TEMPORAL VERSIONING FIELDS
+    validFromDate TEXT NOT NULL,       -- YYYY-MM-DD
+    validFromIndex INTEGER NOT NULL,   -- The occurrence index on that day
+    validToDate TEXT,                  -- NULL = Active indefinitely
+    validToIndex INTEGER,              -- NULL = Active indefinitely
+    
+    createDate TEXT NOT NULL,          -- ISO String
     createdBy TEXT NOT NULL,
-    lastModifiedDate TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    lastModifiedDate TEXT NOT NULL,    -- ISO String
     lastModifiedBy TEXT NOT NULL,
-    FOREIGN KEY(rguid) REFERENCES routines(rguid) ON DELETE CASCADE
+
+    FOREIGN KEY(rguid) REFERENCES routines(rguid) ON DELETE CASCADE,
     FOREIGN KEY(uguid) REFERENCES users(uguid),
     FOREIGN KEY(gguid) REFERENCES groups(gguid) ON DELETE CASCADE
 );
